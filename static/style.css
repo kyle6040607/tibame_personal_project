@@ -1,0 +1,17 @@
+body {
+    font-family: Arial, sans-serif;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 20px;
+    line-height: 1.6;
+}
+
+input, button, textarea {
+    padding: 8px;
+    margin-top: 6px;
+}
+
+textarea {
+    width: 100%;
+    max-width: 100%;
+}

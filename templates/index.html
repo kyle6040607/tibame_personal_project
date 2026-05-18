@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local LLM Notebook</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+
+    {% if not role %}
+    <form action="/login" method="post">
+        <label>帳號：</label>
+        <input type="text" name="username" required>
+        <br><br>
+        <label>密碼：</label>
+        <input type="password" name="password" required>
+        <br><br>
+        <button type="submit">登入</button>
+    </form>
+    {% endif %}
+
+{% if role == "admin" %}
+<hr>
+<h2>Admin 功能區</h2>
+<p>目前登入者：{{ username }}</p>
+
+<h3>文件群組列表</h3>
+<ul>
+    {% for group in groups %}
+    <li>
+        <strong>{{ group.name }}</strong> -
+        {{ group.description }}
+        (ID: {{ group.id }})
+    </li>
+    {% endfor %}
+</ul>
+
+<h3>管理功能</h3>
+<ul>
+    <li>文件上傳</li>
+    <li>文件群組管理</li>
+    <li>使用者角色管理</li>
+</ul>
+{% endif %}
+</body>
+</html>
