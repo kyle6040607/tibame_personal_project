@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User 問答頁</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+    <p>目前登入者：{{ username }}</p>
+
+    <form action="/ask" method="post">
+        <input type="hidden" name="username" value="{{ username }}">
+
+        <label>請輸入你的問題：</label><br>
+        <textarea name="question" rows="6" cols="60" placeholder="例如：本產品保固多久？" required>{{ question }}</textarea>
+        <br><br>
+        <button type="submit">送出提問</button>
+    </form>
+
+    <hr>
+
+    <h2>回答</h2>
+    <p>{{ answer }}</p>
+
+    <h2>相關文件內容</h2>
+    {% if results %}
+        {% for item in results %}
+        <div class="container-card">
+            <p><strong>文件標題：</strong>{{ item.title }}</p>
+            <p><strong>檔名：</strong>{{ item.filename }}</p>
+            <p><strong>群組：</strong>{{ item.group_name }}</p>
+            <p><strong>內容片段：</strong>{{ item.snippet }}</p>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>尚未查到相關內容。</p>
+    {% endif %}
+
+    <br>
+    <a href="/">回登入頁</a>
+</body>
+</html>

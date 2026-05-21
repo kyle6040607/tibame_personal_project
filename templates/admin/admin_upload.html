@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上傳文件</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+    <p>目前登入者：{{ username }}</p>
+
+    <a href="/admin/dashboard?username={{ username }}">回 Admin 目錄</a>
+    <hr>
+
+    <form action="/upload-document" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="username" value="{{ username }}">
+
+        <label>文件標題：</label><br>
+        <input type="file" name="file" id="fileInput" accept=".txt,.pdf" required>
+        <br><br>
+
+        <label>選擇群組：</label><br>
+        <select name="group_id" required>
+            {% for group in groups %}
+            <option value="{{ group.id }}">{{ group.name }}</option>
+            {% endfor %}
+        </select>
+        <br><br>
+
+        <label>上傳 txt 檔：</label><br>
+        <input type="file" name="file" id="fileInput" accept=".txt" required>
+        <br><br>
+
+        <button type="submit">上傳文件</button>
+    </form>
+
+    <script>
+        const fileInput = document.getElementById("fileInput");
+        const titleInput = document.getElementById("titleInput");
+
+        if (fileInput && titleInput) {
+            fileInput.addEventListener("change", function () {
+                const file = this.files[0];
+                if (!file) return;
+
+                const fileName = file.name;
+                const lastDot = fileName.lastIndexOf(".");
+                const pureName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+
+                titleInput.value = pureName;
+            });
+        }
+    </script>
+    <hr>
+
+<h2>已上傳文件</h2>
+
+<hr>
+
+<h2>已上傳文件</h2>
+
+{% if documents %}
+<table border="1" cellpadding="8" cellspacing="0">
+    <tr>
+        <th>ID</th>
+        <th>文件標題</th>
+        <th>檔名</th>
+        <th>所屬群組</th>
+    </tr>
+    {% for doc in documents %}
+    <tr>
+        <td>{{ doc.id }}</td>
+        <td>{{ doc.title }}</td>
+        <td>{{ doc.filename }}</td>
+        <td>{{ doc.group_name }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>目前還沒有任何文件。</p>
+{% endif %}
+</body>
+</html>

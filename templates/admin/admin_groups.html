@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新建群組</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+    <p>目前登入者：{{ username }}</p>
+
+    <a href="/admin/dashboard?username={{ username }}">回 Admin 目錄</a>
+    <hr>
+
+    <form action="/add-group" method="post">
+        <input type="hidden" name="username" value="{{ username }}">
+
+        <label>群組名稱：</label><br>
+        <input type="text" name="group_name" required>
+        <br><br>
+
+        <label>群組說明：</label><br>
+        <textarea name="group_description" rows="4" cols="50" required></textarea>
+        <br><br>
+
+        <button type="submit">新增群組</button>
+    </form>
+
+    <hr>
+    <h2>現有群組</h2>
+    <ul>
+        {% for group in groups %}
+        <li>{{ group.id }} - {{ group.name }} - {{ group.description }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
