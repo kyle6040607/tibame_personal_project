@@ -17,7 +17,7 @@
         <input type="hidden" name="username" value="{{ username }}">
 
         <label>文件標題：</label><br>
-        <input type="file" name="file" id="fileInput" accept=".txt,.pdf" required>
+        <input type="text" name="title" id="titleInput" required>
         <br><br>
 
         <label>選擇群組：</label><br>
@@ -28,8 +28,8 @@
         </select>
         <br><br>
 
-        <label>上傳 txt 檔：</label><br>
-        <input type="file" name="file" id="fileInput" accept=".txt" required>
+        <label>上傳 txt 或 pdf 檔：</label><br>
+        <input type="file" name="file" id="fileInput" accept=".txt,.pdf" required>
         <br><br>
 
         <button type="submit">上傳文件</button>
@@ -54,31 +54,6 @@
     </script>
     <hr>
 
-<h2>已上傳文件</h2>
 
-<hr>
-
-<h2>已上傳文件</h2>
-
-{% if documents %}
-<table border="1" cellpadding="8" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>文件標題</th>
-        <th>檔名</th>
-        <th>所屬群組</th>
-    </tr>
-    {% for doc in documents %}
-    <tr>
-        <td>{{ doc.id }}</td>
-        <td>{{ doc.title }}</td>
-        <td>{{ doc.filename }}</td>
-        <td>{{ doc.group_name }}</td>
-    </tr>
-    {% endfor %}
-</table>
-{% else %}
-<p>目前還沒有任何文件。</p>
-{% endif %}
 </body>
 </html>

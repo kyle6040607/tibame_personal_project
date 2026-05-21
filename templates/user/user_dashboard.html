@@ -9,6 +9,7 @@
 <body>
     <h1>{{ message }}</h1>
     <p>目前登入者：{{ username }}</p>
+    <a href="/">回登入頁</a>
 
     <form action="/ask" method="post">
         <input type="hidden" name="username" value="{{ username }}">
@@ -21,10 +22,12 @@
 
     <hr>
 
-    <h2>回答</h2>
-    <p>{{ answer }}</p>
+    <h2>系統回答（Ollama）</h2>
+    <div class="container-card">
+        <p>{{ answer }}</p>
+    </div>
 
-    <h2>相關文件內容</h2>
+    <h2>檢索到的相關 chunks</h2>
     {% if results %}
         {% for item in results %}
         <div class="container-card">
@@ -33,12 +36,14 @@
             <p><strong>群組：</strong>{{ item.group_name }}</p>
             <p><strong>內容片段：</strong>{{ item.snippet }}</p>
         </div>
+
+        <hr>
         {% endfor %}
     {% else %}
-        <p>尚未查到相關內容。</p>
+        <p>尚未查到相關 chunk。</p>
     {% endif %}
 
     <br>
-    <a href="/">回登入頁</a>
+    
 </body>
 </html>

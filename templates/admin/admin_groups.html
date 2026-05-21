@@ -29,10 +29,34 @@
 
     <hr>
     <h2>現有群組</h2>
-    <ul>
+
+    {% if groups %}
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr>
+            <th>ID</th>
+            <th>群組名稱</th>
+            <th>群組說明</th>
+            <th>操作</th>
+        </tr>
         {% for group in groups %}
-        <li>{{ group.id }} - {{ group.name }} - {{ group.description }}</li>
+        <tr>
+            <td>{{ group.id }}</td>
+            <td>{{ group.name }}</td>
+            <td>{{ group.description }}</td>
+            <td>
+                <form action="/delete-group" method="post" style="margin: 0;">
+                    <input type="hidden" name="username" value="{{ username }}">
+                    <input type="hidden" name="group_id" value="{{ group.id }}">
+                    <button type="submit" onclick="return confirm('確定要刪除這個群組嗎？')">
+                        刪除群組
+                    </button>
+                </form>
+            </td>
+        </tr>
         {% endfor %}
-    </ul>
+    </table>
+    {% else %}
+    <p>目前沒有任何群組。</p>
+    {% endif %}
 </body>
 </html>
