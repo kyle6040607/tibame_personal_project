@@ -15,3 +15,104 @@ textarea {
     width: 100%;
     max-width: 100%;
 }
+
+.hidden {
+  display: none;
+}
+
+#askBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+#askBtn.loading {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-card {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f5f7fb;
+}
+
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.skeleton-title {
+  height: 20px;
+  width: 40%;
+  margin-bottom: 12px;
+}
+
+.skeleton-line {
+  height: 14px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.skeleton-line.short {
+  width: 65%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  border: 0;
+}
+
+.source-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.source-list li {
+    margin-bottom: 12px;
+    line-height: 1.6;
+}
+
+.source-snippet {
+    color: #475569;
+    display: inline-block;
+    margin-top: 4px;
+}
+
+.answer-box {
+    white-space: pre-wrap;
+    line-height: 1.7;
+}
