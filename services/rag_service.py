@@ -1,7 +1,8 @@
 import re
 import requests
 from repositories.chunk_repository import search_chunk_candidates, get_adjacent_chunks
-
+from repositories.vector_repository import query_chunk_embeddings
+from services.embedding_service import get_embedding
 
 def tokenize_query(query: str):
     query = (query or "").strip()
@@ -62,7 +63,7 @@ def search_document_chunks(query: str, group_id: int | None = None):
         })
 
     results.sort(key=lambda x: (x["score"], len(x["matched_tokens"])), reverse=True)
-    return results[:50]
+    return results[:30]
 
 
 def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
@@ -254,13 +255,13 @@ def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name
     except Exception:
         return 0
     
-def rerank_results_with_ollama(question: str, results: list, limit: int = 5) -> list:
+def rerank_results_with_ollama(question: str, results: list, limit: int = 8) -> list:
     if not results:
         return []
 
     reranked = []
 
-    for item in results:
+    for item in results[:8]:
         relevance_score = score_chunk_relevance_with_ollama(
             question=question,
             chunk_text=item["chunk_text"]
@@ -280,3 +281,46 @@ def rerank_results_with_ollama(question: str, results: list, limit: int = 5) -> 
     )
 
     return reranked[:limit]
+
+def search_document_chunks_by_vector(query: str, group_ids: list[int] | None = None):
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    query_embedding = get_embedding(query)
+    if not query_embedding:
+        return []
+
+    result = query_chunk_embeddings(
+        query_embedding=query_embedding,
+        group_ids=group_ids,
+        n_results=10
+    )
+
+    ids = result.get("ids", [[]])[0]
+    docs = result.get("documents", [[]])[0]
+    metas = result.get("metadatas", [[]])[0]
+
+    output = []
+    seen_chunk_ids = set()
+
+    for chunk_id, chunk_text, meta in zip(ids, docs, metas):
+        cid = int(chunk_id)
+        if cid in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(cid)
+
+        output.append({
+            "chunk_id": cid,
+            "document_id": meta["document_id"],
+            "chunk_index": meta["chunk_index"],
+            "title": meta["title"],
+            "filename": meta["filename"],
+            "group_name": meta["group_name"],
+            "chunk_text": chunk_text,
+            "snippet": chunk_text[:300],
+            "score": 0,
+            "matched_tokens": [],
+        })
+
+    return output

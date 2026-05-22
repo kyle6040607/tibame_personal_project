@@ -1,5 +1,29 @@
 from core.database import get_connection
 
+def get_all_chunks():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            c.id,
+            c.document_id,
+            c.chunk_index,
+            c.chunk_text,
+            d.title,
+            d.filename,
+            d.group_id,
+            g.name AS group_name
+        FROM document_chunks c
+        INNER JOIN documents d ON c.document_id = d.id
+        INNER JOIN document_groups g ON d.group_id = g.id
+        ORDER BY c.document_id, c.chunk_index
+    """)
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
 
 def insert_document_chunk(document_id: int, chunk_index: int, chunk_text: str):
     conn = get_connection()

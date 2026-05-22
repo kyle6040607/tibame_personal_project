@@ -10,6 +10,7 @@ from services.rag_service import (
     expand_with_adjacent_chunks,
     generate_answer_with_ollama,
     rerank_results_with_ollama,
+    search_document_chunks_by_vector,
 )
 
 router = APIRouter()
@@ -67,15 +68,22 @@ async def ask_question(
         results_original.extend(search_document_chunks(question, gid))
         results_rewritten.extend(search_document_chunks(rewritten_query, gid))
 
-    merged_results = merge_results(results_original, results_rewritten)
+    vector_results = search_document_chunks_by_vector(question, selected_group_ids)
 
+    merged_results = merge_results(
+        results_original,
+        results_rewritten,
+        vector_results,
+        limit=15
+    )
+
+    top_candidates = merged_results[:5]
+    results = expand_with_adjacent_chunks(top_candidates)
+    answer = generate_answer_with_ollama(question, results)
     # ollama判斷這是不是廢話
     top_relevant = rerank_results_with_ollama(question, merged_results, limit=5)
 
-    #  chunk 做相鄰擴展
-    results = expand_with_adjacent_chunks(top_relevant)
 
-    answer = generate_answer_with_ollama(question, results)
 
     return templates.TemplateResponse(
         request=request,
