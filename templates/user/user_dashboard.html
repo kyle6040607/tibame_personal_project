@@ -31,18 +31,21 @@
 
             <div class="dual-list-wrap">
                 <div class="dual-list-panel">
-                    <label for="availableSearch">所有群組</label>
+                    <div class="dual-list-head">
+                        <label for="availableSearch">所有群組</label>
+                    </div>
+                
                     <input
                         type="text"
                         id="availableSearch"
                         placeholder="搜尋所有群組"
                         oninput="filterList('availableSearch', 'availableGroups')"
                     >
-
+                
                     <select
                         id="availableGroups"
                         multiple
-                        size="10"
+                        size="12"
                         aria-label="所有群組"
                     >
                         {% for group in groups %}
@@ -52,31 +55,31 @@
                         {% endfor %}
                     </select>
                 </div>
-
+            
                 <div class="dual-list-actions">
                     <button type="button" onclick="moveSelected('availableGroups', 'selectedGroups')">&gt;</button>
                     <button type="button" onclick="moveAll('availableGroups', 'selectedGroups')">&gt;&gt;</button>
                     <button type="button" onclick="moveSelected('selectedGroups', 'availableGroups')">&lt;</button>
                     <button type="button" onclick="moveAll('selectedGroups', 'availableGroups')">&lt;&lt;</button>
                 </div>
-
+            
                 <div class="dual-list-panel">
-                    <label for="selectedSearch">已選擇群組</label>
+                    <div class="dual-list-head">
+                        <label for="selectedSearch">已選擇群組</label>
+                        <span id="selectedSummary" class="selected-summary">已選 0 個群組</span>
+                    </div>
+                
                     <input
                         type="text"
                         id="selectedSearch"
                         placeholder="搜尋已選群組"
                         oninput="filterList('selectedSearch', 'selectedGroups')"
                     >
-
-                    <div id="selectedSummary" class="selected-summary">
-                        已選 0 個群組
-                    </div>
-
+                
                     <select
                         id="selectedGroups"
                         multiple
-                        size="10"
+                        size="12"
                         aria-label="已選擇群組"
                     >
                         {% for group in groups %}
@@ -87,7 +90,7 @@
                     </select>
                 </div>
             </div>
-
+            
             <div id="selectedGroupInputs"></div>
 
             <div class="question-block">

@@ -1,99 +1,273 @@
+/* =========================
+   Base
+========================= */
+* {
+    box-sizing: border-box;
+}
+
 body {
     font-family: Arial, sans-serif;
-    max-width: 800px;
+    max-width: 1100px;
     margin: 40px auto;
     padding: 20px;
     line-height: 1.6;
+    color: #0f172a;
+    background: #f8fafc;
 }
 
-input, button, textarea {
-    padding: 8px;
-    margin-top: 6px;
+input,
+button,
+textarea,
+select {
+    font: inherit;
+}
+
+input,
+textarea,
+select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #fff;
+}
+
+button {
+    font: inherit;
 }
 
 textarea {
     width: 100%;
     max-width: 100%;
+    resize: vertical;
+}
+
+label {
+    display: block;
+    margin: 0;
 }
 
 .hidden {
-  display: none;
-}
-
-#askBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 10px;
-  background: #2563eb;
-  color: white;
-  cursor: pointer;
-}
-
-#askBtn.loading {
-  opacity: 0.8;
-  cursor: wait;
-}
-
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255,255,255,0.35);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-card {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: 12px;
-  background: #f5f7fb;
-}
-
-.skeleton {
-  border-radius: 8px;
-  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-
-.skeleton-title {
-  height: 20px;
-  width: 40%;
-  margin-bottom: 12px;
-}
-
-.skeleton-line {
-  height: 14px;
-  width: 100%;
-  margin-bottom: 10px;
-}
-
-.skeleton-line.short {
-  width: 65%;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+    display: none;
 }
 
 .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0,0,0,0);
-  border: 0;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+
+/* =========================
+   Header
+========================= */
+.page-head {
+    margin-bottom: 20px;
+}
+
+.page-head h1 {
+    margin: 0 0 8px;
+}
+
+.page-head p {
+    margin: 0 0 8px;
+    color: #475569;
+}
+
+.page-head a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.page-head a:hover {
+    text-decoration: underline;
+}
+
+
+/* =========================
+   Cards
+========================= */
+.container-card {
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+}
+
+.ask-card {
+    max-width: 1100px;
+}
+
+.ask-card h3 {
+    margin: 0 0 8px;
+}
+
+.chunk-card p {
+    margin: 8px 0;
+}
+
+
+/* =========================
+   Form messages
+========================= */
+.hint-text {
+    margin: 0 0 16px;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.form-error {
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 14px;
+}
+
+
+/* =========================
+   Ask button
+========================= */
+#askBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: auto;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+}
+
+#askBtn.loading {
+    opacity: 0.8;
+    cursor: wait;
+}
+
+#askBtn:disabled {
+    opacity: 0.85;
+    cursor: not-allowed;
+}
+
+
+/* =========================
+   Dual list layout
+========================= */
+.dual-list-wrap {
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) 72px minmax(300px, 1fr);
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 20px;
+}
+
+.dual-list-panel {
+    display: grid;
+    grid-template-rows: auto auto minmax(280px, 1fr);
+    gap: 10px;
+}
+
+.dual-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 28px;
+}
+
+.dual-list-panel label {
+    font-weight: 600;
+    color: #334155;
+}
+
+.dual-list-panel input[type="text"] {
+    margin: 0;
+}
+
+.dual-list-panel select {
+    min-height: 280px;
+    margin: 0;
+    padding: 10px;
+}
+
+.selected-summary {
+    margin: 0;
+    color: #475569;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+
+/* =========================
+   Transfer buttons
+========================= */
+.dual-list-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-self: center;
+    gap: 10px;
+    padding-top: 28px;
+}
+
+.dual-list-actions button {
+    width: 100%;
+    padding: 10px 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.dual-list-actions button:hover {
+    background: #f1f5f9;
+}
+
+
+/* =========================
+   Question block
+========================= */
+.question-block {
+    margin-top: 8px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.question-block label {
+    font-weight: 600;
+    color: #334155;
+}
+
+.question-block textarea {
+    min-height: 140px;
+}
+
+
+/* =========================
+   Answer / sources
+========================= */
+.result-title {
+    margin-top: 24px;
+}
+
+.answer-box {
+    white-space: pre-wrap;
+    line-height: 1.7;
 }
 
 .source-list {
@@ -107,72 +281,103 @@ textarea {
 }
 
 .source-snippet {
-    color: #475569;
     display: inline-block;
     margin-top: 4px;
+    color: #475569;
 }
 
-.answer-box {
-    white-space: pre-wrap;
-    line-height: 1.7;
+
+/* =========================
+   Loading
+========================= */
+.loading-card {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    background: #f5f7fb;
 }
 
-.dual-list-wrap {
-    display: flex;
-    gap: 16px;
-    align-items: stretch;
-    margin-bottom: 20px;
-    max-width: 1000px;
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
 }
 
-.dual-list-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.dual-list-panel input[type="text"] {
-    padding: 8px 10px;
-    border: 1px solid #d1d5db;
+.skeleton {
     border-radius: 8px;
+    background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
 }
 
-.dual-list-panel select {
+.skeleton-title {
+    width: 40%;
+    height: 20px;
+    margin-bottom: 12px;
+}
+
+.skeleton-line {
     width: 100%;
-    min-height: 220px;
-    padding: 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 10px;
-    background: white;
+    height: 14px;
+    margin-bottom: 10px;
 }
 
-.dual-list-actions {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 10px;
+.skeleton-line.short {
+    width: 65%;
 }
 
-.dual-list-actions button {
-    padding: 10px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    background: #ffffff;
-    cursor: pointer;
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
-.dual-list-actions button:hover {
-    background: #f1f5f9;
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
 }
 
+
+/* =========================
+   Responsive
+========================= */
 @media (max-width: 768px) {
+    body {
+        margin: 16px auto;
+        padding: 16px;
+    }
+
     .dual-list-wrap {
-        flex-direction: column;
+        grid-template-columns: 1fr;
+    }
+
+    .dual-list-panel {
+        grid-template-rows: auto auto auto;
     }
 
     .dual-list-actions {
         flex-direction: row;
         justify-content: center;
+        align-self: auto;
+        padding-top: 0;
+        flex-wrap: wrap;
+    }
+
+    .dual-list-actions button {
+        width: auto;
+        min-width: 56px;
+        padding: 10px 14px;
+    }
+
+    .selected-summary {
+        white-space: normal;
+        text-align: right;
     }
 }
