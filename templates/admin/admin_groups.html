@@ -33,14 +33,12 @@
     {% if groups %}
     <table border="1" cellpadding="8" cellspacing="0">
         <tr>
-            <th>ID</th>
             <th>群組名稱</th>
             <th>群組說明</th>
             <th>操作</th>
         </tr>
         {% for group in groups %}
         <tr>
-            <td>{{ group.id }}</td>
             <td>{{ group.name }}</td>
             <td>{{ group.description }}</td>
             <td>
