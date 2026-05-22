@@ -9,6 +9,7 @@ from services.rag_service import (
     merge_results,
     expand_with_adjacent_chunks,
     generate_answer_with_ollama,
+    rerank_results_with_ollama,
 )
 
 router = APIRouter()
@@ -67,7 +68,13 @@ async def ask_question(
         results_rewritten.extend(search_document_chunks(rewritten_query, gid))
 
     merged_results = merge_results(results_original, results_rewritten)
-    results = expand_with_adjacent_chunks(merged_results)
+
+    # ollama判斷這是不是廢話
+    top_relevant = rerank_results_with_ollama(question, merged_results, limit=5)
+
+    #  chunk 做相鄰擴展
+    results = expand_with_adjacent_chunks(top_relevant)
+
     answer = generate_answer_with_ollama(question, results)
 
     return templates.TemplateResponse(

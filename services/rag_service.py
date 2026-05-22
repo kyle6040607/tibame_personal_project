@@ -62,7 +62,7 @@ def search_document_chunks(query: str, group_id: int | None = None):
         })
 
     results.sort(key=lambda x: (x["score"], len(x["matched_tokens"])), reverse=True)
-    return results[:20]
+    return results[:50]
 
 
 def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
@@ -75,7 +75,7 @@ def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
 2. 保留技術名詞，例如 dict、list、tuple、set、DataFrame、merge、groupby。
 3. 如果是「怎麼用」、「如何使用」這類問句，改寫成「主題 + 用法」。
 4. 如果有可能的中英文同義詞，可補上最常見寫法，但不要太長。
-5. 補充盡量完整。
+5. 輸出 1 行即可，不要解釋。
 
 範例：
 - dict要怎麼用呢 -> Python dict 用法 dictionary
@@ -100,7 +100,7 @@ def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
         return question
 
 
-def merge_results(*result_lists, k: int = 60, limit: int = 8):
+def merge_results(*result_lists, k: int = 60, limit: int = 20):
     fused = {}
 
     for result_list in result_lists:
@@ -215,3 +215,68 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
         return data.get("response", "模型沒有回傳內容。").strip()
     except Exception as e:
         return f"Ollama 生成失敗：{str(e)}"
+    
+
+def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name: str = "llama3:latest") -> int:
+    prompt = f"""
+你是一個文件檢索評分器。
+請判斷下面的文件片段，是否真的有助於回答使用者問題。
+
+評分規則：
+- 0 分：完全無關
+- 1 分：只提到關鍵字，但幾乎不能回答
+- 2 分：部分相關，但資訊不足
+- 3 分：相關，能回答一部分
+- 4 分：高度相關，能回答大部分
+- 5 分：直接回答問題
+
+只輸出一個整數（0 到 5），不要解釋。
+
+【使用者問題】
+{question}
+
+【文件片段】
+{chunk_text}
+""".strip()
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": model_name, "prompt": prompt, "stream": False},
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        text = data.get("response", "").strip()
+        score = int(text) if text.isdigit() else 0
+        # 保險收斂在 0~5
+        return max(0, min(score, 5))
+    except Exception:
+        return 0
+    
+def rerank_results_with_ollama(question: str, results: list, limit: int = 5) -> list:
+    if not results:
+        return []
+
+    reranked = []
+
+    for item in results:
+        relevance_score = score_chunk_relevance_with_ollama(
+            question=question,
+            chunk_text=item["chunk_text"]
+        )
+        enriched = dict(item)
+        enriched["relevance_score"] = relevance_score
+        reranked.append(enriched)
+
+    reranked.sort(
+        key=lambda x: (
+            x.get("relevance_score", 0),
+            x.get("rrf_score", 0),
+            x.get("score", 0),
+            len(x.get("matched_tokens", [])),
+        ),
+        reverse=True,
+    )
+
+    return reranked[:limit]
