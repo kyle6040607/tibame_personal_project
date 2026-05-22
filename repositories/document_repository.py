@@ -37,24 +37,21 @@ def get_documents(group_id=None):
     ]
 
 
-def insert_document(title: str, filename: str, content_text: str, group_id: int):
+def insert_document(title: str, filename: str, content_text: str, group_id: int, file_hash: str):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO documents (title, filename, content, group_id) VALUES (?, ?, ?, ?)",
-        title,
-        filename,
-        content_text,
-        group_id
+        """
+        INSERT INTO documents (title, filename, content, group_id, file_hash)
+        OUTPUT INSERTED.id
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (title, filename, content_text, group_id, file_hash)
     )
-    conn.commit()
 
-    cursor.execute(
-        "SELECT TOP 1 id FROM documents WHERE filename = ? ORDER BY id DESC",
-        filename
-    )
     row = cursor.fetchone()
+    conn.commit()
 
     cursor.close()
     conn.close()
@@ -76,3 +73,17 @@ def delete_document_and_chunks(document_id: int):
     finally:
         cursor.close()
         conn.close()
+
+def document_exists_by_hash(file_hash: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT TOP 1 id FROM documents WHERE file_hash = ?",
+        (file_hash,)
+    )
+    row = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+    return row is not None
