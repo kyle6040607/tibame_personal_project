@@ -107,12 +107,10 @@ chunk 資料通常會包含 `document_id`、`chunk_index` 與 `chunk_text`，供
 
 最後，系統將整理後的 chunks 丟給 Ollama，要求模型只能根據提供的文件內容回答，若資訊不足則明確表示無法確定。這種 grounded answer 設計是 RAG 系統降低 hallucination 的關鍵方法。
 
-## 專案目錄建議
+## 專案目錄
 
-以下為建議性的目錄結構，實際檔名可依專案調整：
 
 ```text
-app/
 ├─ main.py
 ├─ core/
 │  ├─ database.py
