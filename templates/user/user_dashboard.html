@@ -147,7 +147,12 @@
             <p><strong>文件標題：</strong>{{ item.title }}</p>
             <p><strong>檔名：</strong>{{ item.filename }}</p>
             <p><strong>群組：</strong>{{ item.group_name }}</p>
+            <p><strong>文件 ID：</strong>{{ item.document_id }}</p>
+            <p><strong>Chunk 編號：</strong>{{ item.chunk_index }}</p>
             <p><strong>分數：</strong>{{ item.score }}</p>
+            {% if item.rrf_score is defined %}
+            <p><strong>RRF 分數：</strong>{{ item.rrf_score }}</p>
+            {% endif %}
             <p><strong>命中關鍵字：</strong>{{ item.matched_tokens | join(', ') }}</p>
             <p><strong>內容片段：</strong>{{ item.snippet }}</p>
         </div>

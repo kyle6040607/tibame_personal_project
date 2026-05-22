@@ -1,6 +1,6 @@
 import re
 import requests
-from repositories.chunk_repository import search_chunk_candidates
+from repositories.chunk_repository import search_chunk_candidates, get_adjacent_chunks
 
 
 def tokenize_query(query: str):
@@ -31,6 +31,7 @@ def search_document_chunks(query: str, group_id: int | None = None):
         full_text = row.chunk_text or ""
         text_lower = full_text.lower()
         title_lower = (row.title or "").lower()
+        filename_lower = (row.filename or "").lower()
 
         score = 0
         matched_tokens = []
@@ -38,6 +39,9 @@ def search_document_chunks(query: str, group_id: int | None = None):
         for token in tokens:
             token_lower = token.lower()
             if token_lower in title_lower:
+                score += 4
+                matched_tokens.append(token)
+            elif token_lower in filename_lower:
                 score += 3
                 matched_tokens.append(token)
             elif token_lower in text_lower:
@@ -46,6 +50,7 @@ def search_document_chunks(query: str, group_id: int | None = None):
 
         results.append({
             "chunk_id": row.id,
+            "document_id": row.document_id,
             "chunk_index": row.chunk_index,
             "title": row.title,
             "filename": row.filename,
@@ -56,20 +61,26 @@ def search_document_chunks(query: str, group_id: int | None = None):
             "matched_tokens": matched_tokens
         })
 
-    results.sort(key=lambda x: (x["score"], -x["chunk_index"]), reverse=True)
-    return results[:5]
+    results.sort(key=lambda x: (x["score"], len(x["matched_tokens"])), reverse=True)
+    return results[:20]
 
 
 def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
     prompt = f"""
 你是一個文件檢索查詢重寫器。
-請把使用者問題改寫成適合拿來搜尋文件內容的簡短查詢。
+請把使用者問題改寫成適合搜尋教材、講義、技術文件的小搜尋詞。
 
 規則：
 1. 保留原意。
-2. 保留產品名、功能名、費用、期限、保固、退款、數字等關鍵資訊。
-3. 移除贅字與聊天語氣。
-4. 輸出 1 行即可，不要解釋，不要加前綴。
+2. 保留技術名詞，例如 dict、list、tuple、set、DataFrame、merge、groupby。
+3. 如果是「怎麼用」、「如何使用」這類問句，改寫成「主題 + 用法」。
+4. 如果有可能的中英文同義詞，可補上最常見寫法，但不要太長。
+5. 輸出 1 行即可，不要解釋。
+
+範例：
+- dict要怎麼用呢 -> Python dict 用法 dictionary
+- dataframe怎麼篩選 -> pandas DataFrame 篩選 filter loc iloc
+- groupby是什麼 -> pandas groupby 用法 分組聚合
 
 使用者問題：
 {question}
@@ -89,18 +100,71 @@ def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
         return question
 
 
-def merge_results(*result_lists):
-    merged = []
-    seen_chunk_ids = set()
+def merge_results(*result_lists, k: int = 60, limit: int = 8):
+    fused = {}
 
     for result_list in result_lists:
-        for item in result_list:
-            chunk_id = item.get("chunk_id")
-            if chunk_id not in seen_chunk_ids:
-                seen_chunk_ids.add(chunk_id)
-                merged.append(item)
+        for rank, item in enumerate(result_list, start=1):
+            chunk_id = item["chunk_id"]
+            rrf_score = 1 / (k + rank)
 
-    return merged[:5]
+            if chunk_id not in fused:
+                fused[chunk_id] = dict(item)
+                fused[chunk_id]["rrf_score"] = 0.0
+                fused[chunk_id]["hit_count"] = 0
+
+            fused[chunk_id]["rrf_score"] += rrf_score
+            fused[chunk_id]["hit_count"] += 1
+
+            existing_tokens = set(fused[chunk_id].get("matched_tokens", []))
+            new_tokens = set(item.get("matched_tokens", []))
+            fused[chunk_id]["matched_tokens"] = list(existing_tokens | new_tokens)
+
+            fused[chunk_id]["score"] = max(
+                fused[chunk_id].get("score", 0),
+                item.get("score", 0)
+            )
+
+    merged = list(fused.values())
+    merged.sort(
+        key=lambda x: (x["rrf_score"], x["hit_count"], x["score"], len(x["matched_tokens"])),
+        reverse=True
+    )
+    return merged[:limit]
+
+
+def expand_with_adjacent_chunks(results: list):
+    expanded = []
+    seen = set()
+
+    for item in results[:5]:
+        key = (item["document_id"], item["chunk_index"])
+        if key not in seen:
+            expanded.append(item)
+            seen.add(key)
+
+        adjacent_rows = get_adjacent_chunks(item["document_id"], item["chunk_index"])
+        for row in adjacent_rows:
+            adj_key = (row.document_id, row.chunk_index)
+            if adj_key in seen:
+                continue
+
+            expanded.append({
+                "chunk_id": row.id,
+                "document_id": row.document_id,
+                "chunk_index": row.chunk_index,
+                "title": item["title"],
+                "filename": item["filename"],
+                "group_name": item["group_name"],
+                "chunk_text": row.chunk_text or "",
+                "snippet": (row.chunk_text or "")[:300],
+                "score": item.get("score", 0) - 0.2,
+                "matched_tokens": item.get("matched_tokens", []),
+            })
+            seen.add(adj_key)
+
+    expanded.sort(key=lambda x: (x["document_id"], x["chunk_index"]))
+    return expanded
 
 
 def generate_answer_with_ollama(question: str, results: list, model_name: str = "llama3:latest"):
@@ -108,11 +172,12 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
         return "根據目前提供的文件內容，無法確定答案。"
 
     context_parts = []
-    for item in results[:3]:
+    for item in results[:6]:
         context_parts.append(
             f"文件標題：{item['title']}\n"
             f"檔名：{item['filename']}\n"
             f"群組：{item['group_name']}\n"
+            f"段落編號：{item['chunk_index']}\n"
             f"內容：\n{item['chunk_text']}"
         )
 
@@ -120,16 +185,15 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
 
     prompt = f"""
 你是一個文件問答助理。
-你只能根據提供的文件內容回答問題，不可使用文件外知識補充。
+你的任務是根據提供的文件片段回答問題。
 
 請遵守以下原則：
-1. 直接回答問題，不要重述使用者問題。
-2. 不要輸出固定標籤，例如「重點答案：」、「依據：」、「補充說明：」。
-3. 請根據問題類型，自行判斷最自然、最有幫助的回答方式。
-4. 如果問題是在問概念、定義、語法或規則，而文件內容足以支持整理，你可以將文件中的資訊整理成較通用、較好理解的說法。
-5. 如果文件內容只提供局部範例，不足以推出完整規則，就只回答文件中能確定的內容，不要自行延伸。
-6. 若文件內容不足以回答，請只回答：根據目前提供的文件內容，無法確定答案。
-7. 一律使用繁體中文，回答自然、簡潔、清楚。
+1. 只能根據文件內容回答。
+2. 若文件內容不足以支持答案，請回答：根據目前提供的文件內容，無法確定答案。
+3. 不可使用文件外知識補充。
+4. 如果多份文件內容有差異，請明確指出差異，不要自行統一。
+5. 一律使用繁體中文，回答自然、簡潔、清楚。
+6. 回答完後，另起一行輸出來源，格式為：來源：文件標題（段落編號）, 文件標題（段落編號）
 
 【文件內容】
 {context_text}
@@ -137,7 +201,7 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
 【使用者問題】
 {question}
 
-請直接輸出最終答案，不要加前言、標題或格式標記。
+請直接輸出最終答案。
 """.strip()
 
     try:

@@ -7,6 +7,7 @@ from services.rag_service import (
     search_document_chunks,
     rewrite_query_with_ollama,
     merge_results,
+    expand_with_adjacent_chunks,
     generate_answer_with_ollama,
 )
 
@@ -59,7 +60,8 @@ def ask_question(
 
     results_original = search_document_chunks(question, selected_group_id)
     results_rewritten = search_document_chunks(rewritten_query, selected_group_id)
-    results = merge_results(results_original, results_rewritten)
+    merged_results = merge_results(results_original, results_rewritten)
+    results = expand_with_adjacent_chunks(merged_results)
 
     answer = generate_answer_with_ollama(question, results)
 
