@@ -357,50 +357,40 @@ def admin_delete_page(request: Request, username: str, group_id: int = None):
         }
     )
 
-@app.post("/delete-document", response_class=HTMLResponse)
+@app.post("/delete-document")
 def delete_document(
     request: Request,
     username: str = Form(...),
     document_id: int = Form(...),
-    group_id: int = Form(None)
+    group_id: int = Form(...)
 ):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT role FROM users WHERE username = ?", username)
-    user = cursor.fetchone()
-
-    if not user or user.role != "admin":
-        cursor.close()
-        conn.close()
-        return templates.TemplateResponse(
-            request=request,
-            name="admin/admin_delete.html",
-            context={
-                "message": "你沒有權限刪除文件",
-                "username": username,
-                "groups": get_groups(),
-                "documents": get_documents(group_id),
-                "selected_group_id": group_id
-            }
+    try:
+        cursor.execute(
+            "DELETE FROM document_chunks WHERE document_id = ?",
+            document_id
         )
 
-    cursor.execute("DELETE FROM documents WHERE id = ?", document_id)
-    conn.commit()
+        cursor.execute(
+            "DELETE FROM documents WHERE id = ?",
+            document_id
+        )
 
-    cursor.close()
-    conn.close()
+        conn.commit()
 
-    return templates.TemplateResponse(
-        request=request,
-        name="admin/admin_delete.html",
-        context={
-            "message": f"文件刪除成功，ID = {document_id}",
-            "username": username,
-            "groups": get_groups(),
-            "documents": get_documents(group_id),
-            "selected_group_id": group_id
-        }
+    except Exception as e:
+        conn.rollback()
+        print(f"刪除文件失敗：{e}")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return RedirectResponse(
+        url=f"/admin/delete?username={username}&group_id={group_id}",
+        status_code=303
     )
 
 def search_documents(question: str):
@@ -655,7 +645,7 @@ def search_document_chunks(query: str):
     where_sql = " OR ".join(where_parts)
 
     sql = f"""
-        SELECT TOP 5
+        SELECT TOP 15
             c.id,
             c.chunk_index,
             c.chunk_text,
@@ -666,7 +656,6 @@ def search_document_chunks(query: str):
         INNER JOIN documents d ON c.document_id = d.id
         INNER JOIN document_groups g ON d.group_id = g.id
         WHERE {where_sql}
-        ORDER BY d.id DESC, c.chunk_index ASC
     """
 
     cursor.execute(sql, params)
@@ -681,6 +670,21 @@ def search_document_chunks(query: str):
         seen_chunk_ids.add(row.id)
 
         full_text = row.chunk_text or ""
+        text_lower = full_text.lower()
+        title_lower = (row.title or "").lower()
+
+        score = 0
+        matched_tokens = []
+
+        for token in tokens:
+            token_lower = token.lower()
+            if token_lower in title_lower:
+                score += 3
+                matched_tokens.append(token)
+            elif token_lower in text_lower:
+                score += 1
+                matched_tokens.append(token)
+
         snippet = full_text[:300]
 
         results.append({
@@ -690,12 +694,16 @@ def search_document_chunks(query: str):
             "filename": row.filename,
             "group_name": row.group_name,
             "chunk_text": full_text,
-            "snippet": snippet
+            "snippet": snippet,
+            "score": score,
+            "matched_tokens": matched_tokens
         })
+
+    results.sort(key=lambda x: (x["score"], -x["chunk_index"]), reverse=True)
 
     cursor.close()
     conn.close()
-    return results
+    return results[:5]
 
 def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
     prompt = f"""

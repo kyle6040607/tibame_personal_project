@@ -158,17 +158,20 @@
 
     <h2>檢索到的相關 chunks</h2>
     {% if results %}
-    <div class="container-card">
-        <h3>本次參考來源</h3>
-        <ul class="source-list">
-            {% for item in results[:3] %}
-            <li>
-                <strong>{{ item.title }}</strong>（{{ item.filename }} / {{ item.group_name }}）<br>
-                <span class="source-snippet">{{ item.snippet }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
+        {% for item in results %}
+        <div class="container-card">
+            <p><strong>文件標題：</strong>{{ item.title }}</p>
+            <p><strong>檔名：</strong>{{ item.filename }}</p>
+            <p><strong>群組：</strong>{{ item.group_name }}</p>
+            <p><strong>分數：</strong>{{ item.score }}</p>
+            <p><strong>命中關鍵字：</strong>{{ item.matched_tokens | join(', ') }}</p>
+            <p><strong>內容片段：</strong>{{ item.snippet }}</p>
+        </div>
+    
+        <hr>
+        {% endfor %}
+    {% else %}
+        <p>尚未查到相關 chunk。</p>
     {% endif %}
 
     <br>
