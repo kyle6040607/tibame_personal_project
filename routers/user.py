@@ -17,7 +17,7 @@ router = APIRouter()
 def build_user_context(
     username: str,
     groups=None,
-    selected_group_id=None,
+    selected_group_ids=None,
     question="",
     results=None,
     answer="請輸入問題後送出。",
@@ -27,7 +27,7 @@ def build_user_context(
         "username": username,
         "message": "User 提問頁",
         "groups": groups or [],
-        "selected_group_id": selected_group_id,
+        "selected_group_ids": selected_group_ids or [],
         "question": question,
         "results": results or [],
         "answer": answer,
@@ -42,27 +42,32 @@ def user_dashboard(request: Request, username: str):
         name="user/user_dashboard.html",
         context=build_user_context(
             username=username,
-            groups=get_groups()
+            groups=get_groups(),
+            selected_group_ids=[]
         )
     )
 
 
 @router.post("/ask", response_class=HTMLResponse)
-def ask_question(
+async def ask_question(
     request: Request,
     username: str = Form(...),
-    question: str = Form(...),
-    group_id: str = Form("")
+    question: str = Form(...)
 ):
-    selected_group_id = int(group_id) if group_id else None
+    form = await request.form()
+    selected_group_ids = [int(x) for x in form.getlist("group_ids") if str(x).strip()]
 
     rewritten_query = rewrite_query_with_ollama(question)
 
-    results_original = search_document_chunks(question, selected_group_id)
-    results_rewritten = search_document_chunks(rewritten_query, selected_group_id)
+    results_original = []
+    results_rewritten = []
+
+    for gid in selected_group_ids:
+        results_original.extend(search_document_chunks(question, gid))
+        results_rewritten.extend(search_document_chunks(rewritten_query, gid))
+
     merged_results = merge_results(results_original, results_rewritten)
     results = expand_with_adjacent_chunks(merged_results)
-
     answer = generate_answer_with_ollama(question, results)
 
     return templates.TemplateResponse(
@@ -71,7 +76,7 @@ def ask_question(
         context=build_user_context(
             username=username,
             groups=get_groups(),
-            selected_group_id=selected_group_id,
+            selected_group_ids=selected_group_ids,
             question=question,
             results=results,
             answer=answer,

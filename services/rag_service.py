@@ -75,7 +75,7 @@ def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
 2. 保留技術名詞，例如 dict、list、tuple、set、DataFrame、merge、groupby。
 3. 如果是「怎麼用」、「如何使用」這類問句，改寫成「主題 + 用法」。
 4. 如果有可能的中英文同義詞，可補上最常見寫法，但不要太長。
-5. 輸出 1 行即可，不要解釋。
+5. 補充盡量完整。
 
 範例：
 - dict要怎麼用呢 -> Python dict 用法 dictionary
