@@ -76,7 +76,7 @@ async def upload_document(
     username: str = Form(...),
     title: str = Form(...),
     group_id: int = Form(...),
-    file: UploadFile = File(...)
+    files: list[UploadFile] = File(...)
 ):
     if not is_admin(username):
         return templates.TemplateResponse(
@@ -90,41 +90,39 @@ async def upload_document(
             }
         )
 
-    content_bytes = await file.read()
-    content_text = extract_text_from_file(file.filename, content_bytes)
+    success_files = []
+    failed_files = []
 
-    if content_text is None:
-        return templates.TemplateResponse(
-            request=request,
-            name="admin/admin_upload.html",
-            context={
-                "message": "目前只支援上傳 txt 與 pdf 檔案",
-                "username": username,
-                "groups": get_groups(),
-                "documents": get_documents()
-            }
-        )
+    for file in files:
+        content_bytes = await file.read()
+        content_text = extract_text_from_file(file.filename, content_bytes)
 
-    if not content_text.strip():
-        return templates.TemplateResponse(
-            request=request,
-            name="admin/admin_upload.html",
-            context={
-                "message": "檔案讀取成功，但沒有擷取到文字內容",
-                "username": username,
-                "groups": get_groups(),
-                "documents": get_documents()
-            }
-        )
+        if content_text is None:
+            failed_files.append(f"{file.filename}（不支援的格式）")
+            continue
 
-    document_id = insert_document(title, file.filename, content_text, group_id)
-    insert_document_chunks(document_id, content_text)
+        if not content_text.strip():
+            failed_files.append(f"{file.filename}（沒有擷取到文字）")
+            continue
+
+        final_title = title.strip() if len(files) == 1 and title.strip() else file.filename
+
+        document_id = insert_document(final_title, file.filename, content_text, group_id)
+        insert_document_chunks(document_id, content_text)
+        success_files.append(file.filename)
+
+    if success_files and failed_files:
+        message = f"成功 {len(success_files)} 個，失敗 {len(failed_files)} 個"
+    elif success_files:
+        message = f"成功上傳 {len(success_files)} 個檔案"
+    else:
+        message = "全部上傳失敗"
 
     return templates.TemplateResponse(
         request=request,
         name="admin/admin_upload.html",
         context={
-            "message": f"文件上傳成功：{file.filename}",
+            "message": message,
             "username": username,
             "groups": get_groups(),
             "documents": get_documents()
