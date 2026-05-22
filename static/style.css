@@ -116,3 +116,63 @@ textarea {
     white-space: pre-wrap;
     line-height: 1.7;
 }
+
+.dual-list-wrap {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    margin-bottom: 20px;
+    max-width: 1000px;
+}
+
+.dual-list-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dual-list-panel input[type="text"] {
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+
+.dual-list-panel select {
+    width: 100%;
+    min-height: 220px;
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: white;
+}
+
+.dual-list-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+}
+
+.dual-list-actions button {
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    cursor: pointer;
+}
+
+.dual-list-actions button:hover {
+    background: #f1f5f9;
+}
+
+@media (max-width: 768px) {
+    .dual-list-wrap {
+        flex-direction: column;
+    }
+
+    .dual-list-actions {
+        flex-direction: row;
+        justify-content: center;
+    }
+}

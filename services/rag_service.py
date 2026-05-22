@@ -13,12 +13,12 @@ def tokenize_query(query: str):
     return tokens[:8]
 
 
-def search_document_chunks(query: str):
+def search_document_chunks(query: str, group_id: int | None = None):
     tokens = tokenize_query(query)
     if not tokens:
         return []
 
-    rows = search_chunk_candidates(tokens)
+    rows = search_chunk_candidates(tokens, group_id)
 
     results = []
     seen_chunk_ids = set()

@@ -15,7 +15,7 @@ def insert_document_chunk(document_id: int, chunk_index: int, chunk_text: str):
     conn.close()
 
 
-def search_chunk_candidates(tokens: list[str]):
+def search_chunk_candidates(tokens: list[str], group_id: int | None = None):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -27,7 +27,7 @@ def search_chunk_candidates(tokens: list[str]):
         keyword = f"%{token}%"
         params.extend([keyword, keyword])
 
-    where_sql = " OR ".join(where_parts)
+    token_where_sql = " OR ".join(where_parts)
 
     sql = f"""
         SELECT TOP 15
@@ -40,8 +40,12 @@ def search_chunk_candidates(tokens: list[str]):
         FROM document_chunks c
         INNER JOIN documents d ON c.document_id = d.id
         INNER JOIN document_groups g ON d.group_id = g.id
-        WHERE {where_sql}
+        WHERE ({token_where_sql})
     """
+
+    if group_id is not None:
+        sql += " AND d.group_id = ?"
+        params.append(group_id)
 
     cursor.execute(sql, params)
     rows = cursor.fetchall()

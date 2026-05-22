@@ -5,137 +5,118 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User 問答頁</title>
     <link rel="stylesheet" href="/static/style.css">
-
-    <style>
-        .hidden {
-            display: none;
-        }
-
-        #askBtn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 16px;
-            border: none;
-            border-radius: 10px;
-            background: #2563eb;
-            color: white;
-            cursor: pointer;
-        }
-
-        #askBtn.loading {
-            opacity: 0.85;
-            cursor: wait;
-        }
-
-        #askBtn:disabled {
-            opacity: 0.85;
-            cursor: not-allowed;
-        }
-
-        .spinner {
-            width: 16px;
-            height: 16px;
-            display: inline-block;
-            border: 2px solid rgba(255, 255, 255, 0.35);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .container-card {
-            padding: 16px;
-            border-radius: 12px;
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            margin-bottom: 16px;
-        }
-
-        .loading-card {
-            margin-bottom: 16px;
-        }
-
-        .skeleton {
-            border-radius: 8px;
-            background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.4s infinite;
-        }
-
-        .skeleton-title {
-            height: 20px;
-            width: 40%;
-            margin-bottom: 12px;
-        }
-
-        .skeleton-line {
-            height: 14px;
-            width: 100%;
-            margin-bottom: 10px;
-        }
-
-        .skeleton-line.short {
-            width: 65%;
-        }
-
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
-        }
-
-        textarea {
-            width: 100%;
-            max-width: 700px;
-        }
-    </style>
 </head>
 <body>
-    <h1>{{ message }}</h1>
-    <p>目前登入者：{{ username }}</p>
-    <a href="/">回登入頁</a>
+    <div class="page-head">
+        <h1>{{ message }}</h1>
+        <p>目前登入者：{{ username }}</p>
+        <a href="/">回登入頁</a>
+    </div>
 
-    <form action="/ask" method="post" id="askForm">
+    <form action="/ask" method="post" id="askForm" onsubmit="return handleSubmit(event)">
         <input type="hidden" name="username" value="{{ username }}">
 
-        <label for="question">請輸入你的問題：</label><br>
-        <textarea id="question" name="question" rows="6" cols="60" placeholder="例如：本產品保固多久？" required>{{ question }}</textarea>
-        <br><br>
+        <div class="container-card ask-card">
+            <h3>選擇檢索群組並提問</h3>
+            <p class="hint-text">請先從左側加入至少一個群組到右側，系統只會在右側已選群組內檢索。</p>
 
-        <button id="askBtn" type="submit" aria-live="polite">
-            <span class="btn-text">送出問題</span>
-            <span class="spinner hidden" aria-hidden="true"></span>
-        </button>
+            <div
+                id="groupError"
+                class="form-error hidden"
+                role="alert"
+                aria-live="assertive"
+            >
+                請至少選擇一個群組後再送出問題。
+            </div>
+
+            <div class="dual-list-wrap">
+                <div class="dual-list-panel">
+                    <label for="availableSearch">所有群組</label>
+                    <input
+                        type="text"
+                        id="availableSearch"
+                        placeholder="搜尋所有群組"
+                        oninput="filterList('availableSearch', 'availableGroups')"
+                    >
+
+                    <select
+                        id="availableGroups"
+                        multiple
+                        size="10"
+                        aria-label="所有群組"
+                    >
+                        {% for group in groups %}
+                            {% if group.id not in selected_group_ids %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="dual-list-actions">
+                    <button type="button" onclick="moveSelected('availableGroups', 'selectedGroups')">&gt;</button>
+                    <button type="button" onclick="moveAll('availableGroups', 'selectedGroups')">&gt;&gt;</button>
+                    <button type="button" onclick="moveSelected('selectedGroups', 'availableGroups')">&lt;</button>
+                    <button type="button" onclick="moveAll('selectedGroups', 'availableGroups')">&lt;&lt;</button>
+                </div>
+
+                <div class="dual-list-panel">
+                    <label for="selectedSearch">已選擇群組</label>
+                    <input
+                        type="text"
+                        id="selectedSearch"
+                        placeholder="搜尋已選群組"
+                        oninput="filterList('selectedSearch', 'selectedGroups')"
+                    >
+
+                    <div id="selectedSummary" class="selected-summary">
+                        已選 0 個群組
+                    </div>
+
+                    <select
+                        id="selectedGroups"
+                        multiple
+                        size="10"
+                        aria-label="已選擇群組"
+                    >
+                        {% for group in groups %}
+                            {% if group.id in selected_group_ids %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div id="selectedGroupInputs"></div>
+
+            <div class="question-block">
+                <label for="question">請輸入你的問題</label>
+                <textarea
+                    id="question"
+                    name="question"
+                    rows="6"
+                    placeholder="例如：本產品保固多久？"
+                    required
+                >{{ question }}</textarea>
+            </div>
+
+            <button id="askBtn" type="submit" aria-live="polite">
+                <span class="btn-text">送出問題</span>
+                <span class="spinner hidden" aria-hidden="true"></span>
+            </button>
+        </div>
     </form>
 
-    <hr>
-
-    <h2>系統回答（Ollama）</h2>
+    <h2 class="result-title">系統回答（Ollama）</h2>
 
     <div id="resultWrap" aria-live="polite" aria-busy="false">
-        {% if not answer %}
         <div id="loadingState" class="container-card loading-card hidden" role="status">
             <div class="skeleton skeleton-title"></div>
             <div class="skeleton skeleton-line"></div>
             <div class="skeleton skeleton-line short"></div>
             <span class="sr-only">系統正在分析文件內容</span>
         </div>
-        {% endif %}
 
         <div class="container-card answer-box">
             {{ answer }}
@@ -144,7 +125,7 @@
         {% if results %}
         <div class="container-card">
             <h3>本次參考來源</h3>
-            <ul>
+            <ul class="source-list">
                 {% for item in results[:3] %}
                 <li>
                     <strong>{{ item.title }}</strong>（{{ item.filename }} / {{ item.group_name }}）<br>
@@ -159,7 +140,7 @@
     <h2>檢索到的相關 chunks</h2>
     {% if results %}
         {% for item in results %}
-        <div class="container-card">
+        <div class="container-card chunk-card">
             <p><strong>文件標題：</strong>{{ item.title }}</p>
             <p><strong>檔名：</strong>{{ item.filename }}</p>
             <p><strong>群組：</strong>{{ item.group_name }}</p>
@@ -167,17 +148,103 @@
             <p><strong>命中關鍵字：</strong>{{ item.matched_tokens | join(', ') }}</p>
             <p><strong>內容片段：</strong>{{ item.snippet }}</p>
         </div>
-    
-        <hr>
         {% endfor %}
     {% else %}
         <p>尚未查到相關 chunk。</p>
     {% endif %}
 
-    <br>
-
     <script>
-    document.getElementById('askForm').addEventListener('submit', function () {
+    function moveSelected(fromId, toId) {
+        const from = document.getElementById(fromId);
+        const to = document.getElementById(toId);
+
+        Array.from(from.selectedOptions).forEach(option => {
+            to.appendChild(option);
+        });
+
+        sortOptions(from);
+        sortOptions(to);
+        updateSelectedSummary();
+        clearGroupError();
+    }
+
+    function moveAll(fromId, toId) {
+        const from = document.getElementById(fromId);
+        const to = document.getElementById(toId);
+
+        Array.from(from.options).forEach(option => {
+            to.appendChild(option);
+        });
+
+        sortOptions(from);
+        sortOptions(to);
+        updateSelectedSummary();
+        clearGroupError();
+    }
+
+    function sortOptions(selectElement) {
+        const options = Array.from(selectElement.options);
+        options.sort((a, b) => a.text.localeCompare(b.text, 'zh-Hant'));
+        selectElement.innerHTML = "";
+        options.forEach(option => selectElement.appendChild(option));
+    }
+
+    function filterList(searchId, listId) {
+        const keyword = document.getElementById(searchId).value.toLowerCase();
+        const list = document.getElementById(listId);
+
+        Array.from(list.options).forEach(option => {
+            const matched = option.text.toLowerCase().includes(keyword);
+            option.style.display = matched ? "" : "none";
+        });
+    }
+
+    function prepareSelectedGroups() {
+        const container = document.getElementById("selectedGroupInputs");
+        const selected = document.getElementById("selectedGroups");
+
+        container.innerHTML = "";
+
+        Array.from(selected.options).forEach(option => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "group_ids";
+            input.value = option.value;
+            container.appendChild(input);
+        });
+    }
+
+    function showGroupError() {
+        const error = document.getElementById("groupError");
+        error.classList.remove("hidden");
+        document.getElementById("selectedGroups").setAttribute("aria-invalid", "true");
+    }
+
+    function clearGroupError() {
+        const error = document.getElementById("groupError");
+        error.classList.add("hidden");
+        document.getElementById("selectedGroups").removeAttribute("aria-invalid");
+    }
+
+    function updateSelectedSummary() {
+        const selected = document.getElementById("selectedGroups");
+        const count = selected.options.length;
+        document.getElementById("selectedSummary").textContent = `已選 ${count} 個群組`;
+    }
+
+    function handleSubmit(event) {
+        const selected = document.getElementById("selectedGroups");
+        const hasSelectedGroup = selected.options.length > 0;
+
+        if (!hasSelectedGroup) {
+            event.preventDefault();
+            showGroupError();
+            selected.focus();
+            return false;
+        }
+
+        prepareSelectedGroups();
+
         const btn = document.getElementById('askBtn');
         const btnText = btn.querySelector('.btn-text');
         const spinner = btn.querySelector('.spinner');
@@ -193,7 +260,12 @@
         if (loadingState) {
             loadingState.classList.remove('hidden');
         }
-    });
+
+        clearGroupError();
+        return true;
+    }
+
+    updateSelectedSummary();
     </script>
 </body>
 </html>

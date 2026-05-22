@@ -40,7 +40,6 @@
     {% if documents %}
     <table border="1" cellpadding="8" cellspacing="0">
         <tr>
-            <th>ID</th>
             <th>文件標題</th>
             <th>檔名</th>
             <th>所屬群組</th>
@@ -48,7 +47,6 @@
         </tr>
         {% for doc in documents %}
         <tr>
-            <td>{{ doc.id }}</td>
             <td>{{ doc.title }}</td>
             <td>{{ doc.filename }}</td>
             <td>{{ doc.group_name }}</td>
