@@ -3,14 +3,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core.template import templates
 from services.document_service import insert_document_chunks
-from core.database import get_connection
+from services.embedding_service import index_document_chunks
 from repositories.group_repository import get_groups, insert_group, delete_group_if_empty
-from repositories.document_repository import get_documents, insert_document, delete_document_and_chunks
+from repositories.document_repository import get_documents, insert_document, delete_document_and_chunks, document_exists_by_hash
 from services.auth_service import is_admin
 from services.file_service import extract_text_from_file
 
 import hashlib
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -101,6 +103,7 @@ async def upload_document(
         file_hash = hashlib.sha256(content_bytes).hexdigest()
 
         if document_exists_by_hash(file_hash):
+            logger.info("upload skip: file=%s already exists (hash match)", file.filename)
             failed_files.append(f"{file.filename}（已上傳過）")
             continue
 
@@ -124,7 +127,10 @@ async def upload_document(
             file_hash
         )
         insert_document_chunks(document_id, content_text)
+        index_document_chunks(document_id)
         success_files.append(file.filename)
+        logger.info("upload success: user=%s file=%s document_id=%d group_id=%d",
+                    username, file.filename, document_id, group_id)
 
     if success_files and failed_files:
         message = f"成功 {len(success_files)} 個，失敗 {len(failed_files)} 個"
@@ -207,16 +213,3 @@ def delete_group(
         }
     )
 
-def document_exists_by_hash(file_hash: str) -> bool:
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT TOP 1 id FROM documents WHERE file_hash = ?",
-        (file_hash,)
-    )
-    row = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-    return row is not None

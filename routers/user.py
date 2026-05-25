@@ -1,5 +1,8 @@
+import logging
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse
+
+logger = logging.getLogger(__name__)
 
 from core.template import templates
 from repositories.group_repository import get_groups
@@ -59,6 +62,8 @@ async def ask_question(
     form = await request.form()
     selected_group_ids = [int(x) for x in form.getlist("group_ids") if str(x).strip()]
 
+    logger.info("ask: user=%s groups=%s question=%r", username, selected_group_ids, question)
+
     rewritten_query = rewrite_query_with_ollama(question)
 
     results_original = []
@@ -77,11 +82,17 @@ async def ask_question(
         limit=15
     )
 
-    top_candidates = merged_results[:5]
+    logger.info("ask: keyword_orig=%d keyword_rewrite=%d vector=%d merged=%d",
+                len(results_original), len(results_rewritten),
+                len(vector_results), len(merged_results))
+
+    top_relevant = rerank_results_with_ollama(question, merged_results, limit=5)
+
+    top_candidates = top_relevant[:5] if top_relevant else merged_results[:5]
     results = expand_with_adjacent_chunks(top_candidates)
     answer = generate_answer_with_ollama(question, results)
-    # ollama判斷這是不是廢話
-    top_relevant = rerank_results_with_ollama(question, merged_results, limit=5)
+
+    logger.info("ask: final_chunks=%d answer_len=%d", len(results), len(answer))
 
 
 

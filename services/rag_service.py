@@ -1,17 +1,51 @@
 import re
+import logging
 import requests
 from repositories.chunk_repository import search_chunk_candidates, get_adjacent_chunks
 from repositories.vector_repository import query_chunk_embeddings
 from services.embedding_service import get_embedding
+
+logger = logging.getLogger(__name__)
+
+_CJK_CHAR = re.compile(r'[一-鿿㐀-䶿]')
+_CJK_ASCII_BOUNDARY = re.compile(
+    r'(?<=[a-zA-Z0-9])(?=[一-鿿㐀-䶿])'
+    r'|'
+    r'(?<=[一-鿿㐀-䶿])(?=[a-zA-Z0-9])'
+)
 
 def tokenize_query(query: str):
     query = (query or "").strip()
     if not query:
         return []
 
-    tokens = re.split(r"[\s,，。！？；：/\\|]+", query)
-    tokens = [t.strip() for t in tokens if t.strip()]
-    return tokens[:8]
+    raw = re.split(r"[\s,，。！？；：/\\|]+", query)
+    raw = [t.strip() for t in raw if t.strip()]
+
+    tokens = []
+    for t in raw:
+        # Split at CJK<->ASCII boundaries: "dict怎麼" -> ["dict", "怎麼"]
+        parts = _CJK_ASCII_BOUNDARY.split(t)
+        parts = [p for p in parts if p]
+
+        for part in parts:
+            tokens.append(part)
+            # For long pure-CJK segments, add 2-char bigrams for sub-phrase matching
+            if len(part) >= 4 and _CJK_CHAR.search(part):
+                bigrams = [part[i:i+2] for i in range(len(part) - 1)
+                           if _CJK_CHAR.search(part[i:i+2])]
+                tokens.extend(bigrams)
+
+    # Deduplicate while preserving order, cap at 16
+    seen = set()
+    result = []
+    for t in tokens:
+        if t not in seen:
+            seen.add(t)
+            result.append(t)
+    result = result[:16]
+    logger.debug("tokenize_query: %s -> %s", query, result)
+    return result
 
 
 def search_document_chunks(query: str, group_id: int | None = None):
@@ -63,7 +97,11 @@ def search_document_chunks(query: str, group_id: int | None = None):
         })
 
     results.sort(key=lambda x: (x["score"], len(x["matched_tokens"])), reverse=True)
-    return results[:30]
+    nonzero = [r for r in results if r["score"] > 0]
+    final = (nonzero if nonzero else results)[:50]
+    logger.info("keyword search group=%s query=%r -> %d results (%d nonzero)",
+                group_id, query, len(final), len(nonzero))
+    return final
 
 
 def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
@@ -96,8 +134,11 @@ def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
         response.raise_for_status()
         data = response.json()
         rewritten = data.get("response", "").strip()
-        return rewritten if rewritten else question
-    except Exception:
+        result = rewritten if rewritten else question
+        logger.info("rewrite_query: %r -> %r", question, result)
+        return result
+    except Exception as e:
+        logger.warning("rewrite_query failed: %s", e)
         return question
 
 
@@ -193,7 +234,7 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
 2. 若文件內容不足以支持答案，請回答：根據目前提供的文件內容，無法確定答案。
 3. 不可使用文件外知識補充。
 4. 如果多份文件內容有差異，請明確指出差異，不要自行統一。
-5. 一律使用繁體中文，回答自然、簡潔、清楚。
+5. 一律使用繁體中文，回答自然、簡潔、清橚。
 6. 回答完後，另起一行輸出來源，格式為：來源：文件標題（段落編號）, 文件標題（段落編號）
 
 【文件內容】
@@ -205,6 +246,7 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
 請直接輸出最終答案。
 """.strip()
 
+    logger.info("generate_answer: question=%r, context_chunks=%d", question, len(results))
     try:
         response = requests.post(
             "http://localhost:11434/api/generate",
@@ -213,10 +255,13 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("response", "模型沒有回傳內容。").strip()
+        answer = data.get("response", "模型沒有回傳內容。").strip()
+        logger.info("generate_answer: done, answer_len=%d", len(answer))
+        return answer
     except Exception as e:
+        logger.error("generate_answer failed: %s", e)
         return f"Ollama 生成失敗：{str(e)}"
-    
+
 
 def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name: str = "llama3:latest") -> int:
     prompt = f"""
@@ -250,18 +295,18 @@ def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name
         data = response.json()
         text = data.get("response", "").strip()
         score = int(text) if text.isdigit() else 0
-        # 保險收斂在 0~5
         return max(0, min(score, 5))
-    except Exception:
+    except Exception as e:
+        logger.warning("score_chunk_relevance failed: %s", e)
         return 0
-    
+
 def rerank_results_with_ollama(question: str, results: list, limit: int = 8) -> list:
     if not results:
         return []
 
     reranked = []
 
-    for item in results[:8]:
+    for item in results[:3]:
         relevance_score = score_chunk_relevance_with_ollama(
             question=question,
             chunk_text=item["chunk_text"]
@@ -289,18 +334,20 @@ def search_document_chunks_by_vector(query: str, group_ids: list[int] | None = N
 
     query_embedding = get_embedding(query)
     if not query_embedding:
+        logger.warning("vector search: empty embedding for query=%r", query)
         return []
 
     result = query_chunk_embeddings(
         query_embedding=query_embedding,
         group_ids=group_ids,
-        n_results=10
+        n_results=25
     )
 
     ids = result.get("ids", [[]])[0]
     docs = result.get("documents", [[]])[0]
     metas = result.get("metadatas", [[]])[0]
 
+    logger.info("vector search: query=%r groups=%s -> %d results", query, group_ids, len(ids))
     output = []
     seen_chunk_ids = set()
 
