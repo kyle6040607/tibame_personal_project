@@ -64,6 +64,62 @@ label {
 
 
 /* =========================
+   Site Nav
+========================= */
+.site-nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.site-nav img {
+    height: 48px;
+    width: auto;
+    object-fit: contain;
+}
+
+/* =========================
+   Login Page Logo
+========================= */
+.login-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh;
+}
+
+.login-logo {
+    margin-bottom: 24px;
+}
+
+.login-logo img {
+    height: 80px;
+    width: auto;
+    object-fit: contain;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 32px;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
+}
+
+.login-card h1 {
+    margin: 0 0 20px;
+    font-size: 1.4rem;
+    text-align: center;
+    color: #0f172a;
+}
+
+/* =========================
    Header
 ========================= */
 .page-head {

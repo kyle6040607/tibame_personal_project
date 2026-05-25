@@ -31,6 +31,7 @@ logging.basicConfig(
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.mount("/logo", StaticFiles(directory=BASE_DIR / "logo"), name="logo")
 
 app.include_router(auth_router)
 app.include_router(admin_router)
