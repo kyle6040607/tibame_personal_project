@@ -1,4 +1,5 @@
 import re
+import json
 import logging
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -221,42 +222,67 @@ def expand_with_adjacent_chunks(results: list):
     return expanded
 
 
-def generate_answer_with_ollama(question: str, results: list, model_name: str = LLM_MODEL):
-    if not results:
-        return "根據目前提供的文件內容，無法確定答案。"
-
-    context_parts = []
+def build_context_text(results: list, max_chars: int = 4000) -> str:
+    parts = []
+    total = 0
     for item in results[:6]:
-        context_parts.append(
+        chunk = (
             f"文件標題：{item['title']}\n"
             f"檔名：{item['filename']}\n"
             f"群組：{item['group_name']}\n"
             f"段落編號：{item['chunk_index']}\n"
             f"內容：\n{item['chunk_text']}"
         )
+        if total > 0 and total + len(chunk) > max_chars:
+            logger.warning("context truncated: %d chars, %d/%d chunks included",
+                           total, len(parts), len(results))
+            break
+        parts.append(chunk)
+        total += len(chunk)
+    return "\n\n---\n\n".join(parts)
 
-    context_text = "\n\n---\n\n".join(context_parts)
 
-    prompt = f"""
-你是一個文件問答助理。
-你的任務是根據提供的文件片段回答問題。
+def build_answer_prompt(question: str, context_text: str, history: list | None = None) -> str:
+    history_section = ""
+    if history:
+        lines = []
+        for entry in history[-3:]:
+            lines.append(f"使用者：{entry['question']}")
+            preview = entry["answer"][:300].replace("\n", " ")
+            lines.append(f"助理：{preview}")
+        history_section = "【對話歷史】\n" + "\n".join(lines) + "\n\n"
 
-請遵守以下原則：
+    return f"""你是一個文件問答助理。根據提供的文件片段回答問題。
+
+規則：
 1. 只能根據文件內容回答。
-2. 若文件內容不足以支持答案，請回答：根據目前提供的文件內容，無法確定答案。
+2. 若文件內容不足，回答：根據目前提供的文件內容，無法確定答案。
 3. 不可使用文件外知識補充。
-4. 如果多份文件內容有差異，請明確指出差異，不要自行統一。
-5. 一律使用繁體中文，回答自然、簡潔、清楚。
-6. 回答完後，另起一行輸出來源，格式為：來源：文件標題（段落編號）, 文件標題（段落編號）
+4. 若多份文件有差異，明確指出差異。
+5. 一律使用繁體中文，自然、簡潔、清楚。
+6. 輸出格式固定如下：
 
-【文件內容】
+【回答】
+（在此填寫回答內容）
+
+【來源】
+- 文件標題（第N段）
+
+{history_section}【文件內容】
 {context_text}
 
 【使用者問題】
 {question}
 
-請直接輸出最終答案。
-""".strip()
+請直接輸出最終答案。""".strip()
+
+
+def generate_answer_with_ollama(question: str, results: list, history: list | None = None, model_name: str = LLM_MODEL):
+    if not results:
+        return "根據目前提供的文件內容，無法確定答案。"
+
+    context_text = build_context_text(results)
+    prompt = build_answer_prompt(question, context_text, history)
 
     logger.info("generate_answer: question=%r, context_chunks=%d", question, len(results))
     try:
@@ -274,6 +300,39 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
     except Exception as e:
         logger.error("generate_answer failed: %s", e)
         return f"Ollama 生成失敗：{str(e)}"
+
+
+def generate_answer_streaming(question: str, results: list, history: list | None = None, model_name: str = LLM_MODEL):
+    """Sync generator yielding answer tokens one by one via Ollama streaming API."""
+    if not results:
+        yield "根據目前提供的文件內容，無法確定答案。"
+        return
+
+    context_text = build_context_text(results)
+    prompt = build_answer_prompt(question, context_text, history)
+
+    logger.info("generate_answer_streaming: question=%r, context_chunks=%d", question, len(results))
+    try:
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": model_name, "prompt": prompt, "stream": True,
+                  "options": {"temperature": 0.3}},
+            timeout=120,
+            stream=True
+        )
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            data = json.loads(line)
+            token = data.get("response", "")
+            if token:
+                yield token
+            if data.get("done"):
+                break
+    except Exception as e:
+        logger.error("generate_answer_streaming failed: %s", e)
+        yield f"\n[生成失敗：{str(e)}]"
 
 
 def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name: str = LLM_MODEL) -> int:
