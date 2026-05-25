@@ -1,6 +1,6 @@
 # Local LLM Notebook
 
-一個可在地端部署的文件問答系統，使用 FastAPI、Jinja2、MSSQL 與 Ollama 建構。系統支援文件群組管理、文件上傳、文件 chunk 化儲存，以及依群組範圍限制的 RAG 問答流程，適合做為本地知識庫問答與 RAG 架構練習專案。
+一個可在地端部署的文件問答系統，使用 FastAPI、Jinja2、MSSQL、ChromaDB 與 Ollama 建構。系統支援文件群組管理、文件上傳、文件 chunk 化儲存，以及依群組範圍限制的 RAG 問答流程，適合做為本地知識庫問答與 RAG 架構練習專案。
 
 ## 專案目標
 
@@ -10,13 +10,15 @@
 
 - Admin / User 角色區分。
 - 文件群組新增、刪除與管理。
-- 文件上傳與文件 metadata 儲存。
-- 將文件內容切成 chunks 後寫入 `document_chunks`。
+- 文件上傳，自動切 chunk 並同步建立向量索引（ChromaDB），上傳後即可被向量搜尋到。
 - 使用者依群組範圍提問。
+- 中英文混合查詢自動切分（`dict怎麼用` → `['dict', '使用', '語法'...]`），避免整句當成一個搜尋詞。
 - 使用 Ollama 進行查詢重寫與答案生成。
-- 以原始查詢與重寫查詢做雙路檢索。
-- 使用 RRF（Reciprocal Rank Fusion）融合檢索結果。
-- 顯示參考來源與 chunks debug 資訊，方便調整 RAG 表現。
+- 三路檢索融合：原始 keyword、重寫 keyword、向量搜尋（ChromaDB）。
+- 使用 RRF（Reciprocal Rank Fusion）融合三路結果。
+- 使用 Ollama rerank 對候選 chunk 做相關性評分，過濾雜訊後再生成答案。
+- 顯示參考來源與 chunk debug 資訊，方便調整 RAG 表現。
+- 統一 logging，輸出至終端機與 `logs/app.log`，方便除錯。
 
 ## 系統架構
 
@@ -24,113 +26,163 @@
 
 前端使用 Jinja2 模板渲染 HTML，主要提供：
 
-- 文件群組選擇。
+- 文件群組選擇（雙欄拖拉介面）。
 - 問題輸入。
 - 系統回答顯示。
-- 檢索來源與 chunks debug 顯示。
+- 檢索來源與 chunk debug 顯示。
 
-目前問答頁採用雙欄群組選擇模式，左側顯示所有群組，右側顯示已選群組，並透過 hidden inputs 提交多個 `group_ids`，讓後端能在重新渲染頁面時保留使用者的群組選擇狀態。
+問答頁採用雙欄群組選擇模式，左側顯示所有群組，右側顯示已選群組，透過 hidden inputs 提交多個 `group_ids`，讓後端在重新渲染頁面時能保留使用者的群組選擇狀態。
 
 ### 後端
 
-後端以 FastAPI 建立路由與服務邏輯，主要負責：
+後端以 FastAPI 建立路由與服務邏輯，採分層設計：
 
-- 使用者與管理者頁面路由。
-- 表單資料接收。
-- 文件匯入流程。
-- RAG service 呼叫。
-- Jinja 模板回填與畫面渲染。
+```
+routers → services → repositories → DB / ChromaDB / Ollama
+```
 
-FastAPI 可以透過 `request.form()` 與 `getlist()` 處理同名欄位多值提交，因此適合目前的多群組選擇設計。
+- `routers`：接收 HTTP 請求，組合 service 呼叫，回填模板。
+- `services`：業務邏輯，包含 RAG 流程、embedding、文件處理。
+- `repositories`：資料存取，SQL Server 與 ChromaDB 操作。
 
 ### 資料庫
 
-目前資料庫的核心結構可分為：
+SQL Server 核心資料表：
 
-- `documents`：文件主檔與 metadata。
-- `document_groups`：文件群組。
-- `document_chunks`：切割後的 chunk 內容。
+| 資料表 | 說明 |
+|--------|------|
+| `document_groups` | 文件群組 |
+| `documents` | 文件主檔與 metadata（含 SHA256 hash 做去重） |
+| `document_chunks` | 切割後的 chunk（含 `chunk_index` 供相鄰擴展用） |
+| `users` | 使用者帳號與角色 |
 
-chunk 資料通常會包含 `document_id`、`chunk_index` 與 `chunk_text`，供檢索、rerank 與相鄰 chunk 擴展使用。這種 chunk-based 設計是 RAG 系統常見基礎做法。
+ChromaDB 向量資料庫（`chroma_db/`）：
+
+- Collection `document_chunks`：儲存每個 chunk 的 embedding，metadata 含 `group_id` 供群組過濾。
 
 ### 模型層
 
-本專案使用 Ollama 做本地推理，現階段主要有兩個用途：
+本專案使用 Ollama 做本地推理，共三個用途：
 
-- **查詢重寫器**：把使用者問題改寫成比較適合技術文件搜尋的 query。
-
-- **答案生成器**：根據檢索到的 chunks 產生 grounded answer。
-
-這也就是目前系統裡會看到兩個 prompt 的原因：兩個 prompt 服務的是不同任務，而不是重複做同一件事。
+| 用途 | 模型 | 說明 |
+|------|------|------|
+| Embedding | `mxbai-embed-large` | 將 chunk 與查詢向量化，供向量搜尋使用 |
+| 查詢重寫 | `llama3:latest` | 把自然語言問題改寫成適合技術文件搜尋的關鍵詞 |
+| 答案生成 | `llama3:latest` | 根據檢索到的 chunk 產生 grounded answer |
+| Rerank 評分 | `llama3:latest` | 對候選 chunk 評 0–5 分，篩出真正能回答問題的片段 |
 
 ## 系統流程
 
 ### 1. 文件匯入
 
-當文件被上傳後，系統會先保存文件 metadata，再解析文字內容並切成多個 chunks，最後將 chunks 寫入 `document_chunks`。這讓系統不必在問答時每次重新解析整份文件，而是直接用 chunk 為單位查詢。
+上傳時系統會：
+1. 計算 SHA256 hash，如果已上傳過則跳過。
+2. 解析文字內容（支援 PDF / TXT）。
+3. 儲存文件 metadata 到 `documents`。
+4. 切成 chunks（每塊 800 字，重疊 120 字）寫入 `document_chunks`。
+5. **自動呼叫 Ollama embedding，將所有 chunk 寫入 ChromaDB**——不需要手動執行任何腳本，上傳後向量搜尋立刻可用。
 
 ### 2. 使用者提問
 
-使用者在前端頁面選定一個或多個群組後輸入問題，後端會取得：
+使用者在前端選定一個或多個群組後輸入問題，後端取得：
 
-- 使用者名稱。
-- 問題文字。
-- 多個 `group_ids`。
+- 使用者名稱、問題文字、多個 `group_ids`。
 
-這些資訊會作為整個檢索範圍與回答流程的基礎。
+### 3. 查詢 Tokenize
 
-### 3. 查詢重寫
+系統對查詢做智慧切分：
 
-系統會先保留原始問題，再用 Ollama 把問題改寫成更像教材或技術文件會使用的檢索詞。查詢重寫的目的，是補足同義詞、技術名詞與較自然的搜尋型表述，以提高召回率。
+- 按空白與標點分割。
+- 在中英文交界處自動切開（`dict怎麼用` → `['dict', '怎麼用']`）。
+- 對長 CJK 片段產生 2-gram bigram（`怎麼使用` → 額外加 `['怎麼', '使用']`），避免整句當一個詞找不到任何 chunk。
 
-### 4. 雙路檢索
+### 4. 查詢重寫
 
-系統會同時用：
+Ollama 把原始問題改寫成更像技術文件的檢索詞，例如：
 
-- 原始問題
-- 重寫後查詢
+```
+dict怎麼使用的 語法是甚麼 → Python dict 用法 dictionary 語法
+```
 
-各做一次 chunk 檢索。現階段檢索仍以 keyword matching 為主，通常會根據 `title`、`filename` 與 `chunk_text` 的命中情況進行加權評分。
-### 5. 結果融合
+### 5. 三路檢索
 
-兩路檢索結果會再使用 RRF 融合。RRF 能用排名而不是原始分數來整合不同檢索來源，因此很適合原查詢與重寫查詢這種多來源結果合併場景。
+同時執行三路搜尋：
 
-### 6. rerank 與過濾
+| 路 | 方式 | 說明 |
+|----|------|------|
+| 原始 keyword | SQL LIKE | 用原始問題的 token 做全文比對 |
+| 重寫 keyword | SQL LIKE | 用重寫後查詢的 token 做全文比對 |
+| 向量搜尋 | ChromaDB | 用問題 embedding 做語意相似度搜尋（top 25）|
 
-多文件情境下，排在前面的 chunks 不一定真的能回答問題，因此系統可再加入第二階段 relevance 檢查或 rerank。這種 two-stage retrieval 的做法可避免只命中關鍵字、但資訊不足的 chunks 進入最終 context。
+SQL keyword 搜尋會先對 `title`、`filename`、`chunk_text` 加權排序後取 TOP 200，再由 Python 重新評分，過濾掉 score=0 的無關結果。
 
-### 7. 相鄰 chunk 擴展
+### 6. RRF 結果融合
 
-對高相關 chunk，系統可以再根據 `document_id` 與 `chunk_index` 抓取前後 chunk，補足上下文，避免答案剛好被切在 chunk 邊界。這對長文件尤其重要。
+三路結果用 RRF（Reciprocal Rank Fusion）融合。RRF 以排名而非原始分數整合，適合多來源結果合併。融合後取 top 15。
 
-### 8. 答案生成
+### 7. Rerank
 
-最後，系統將整理後的 chunks 丟給 Ollama，要求模型只能根據提供的文件內容回答，若資訊不足則明確表示無法確定。這種 grounded answer 設計是 RAG 系統降低 hallucination 的關鍵方法。
+對融合後的 top 3 候選 chunk，讓 Ollama 各評一個 0–5 的相關性分數，再按分數重排。這個步驟確保最後進入 context 的 chunk 是真正能回答問題的片段，而非只是碰巧含有關鍵字。
+
+### 8. 相鄰 chunk 擴展
+
+對 rerank 後的 top 5 chunk，根據 `document_id` 與 `chunk_index` 抓取前後各一個 chunk，補足上下文，避免答案恰好被切在 chunk 邊界。
+
+### 9. 答案生成
+
+將整理後的 chunk 丟給 Ollama，要求模型只能根據文件內容回答，資訊不足時明確表示無法確定，並輸出來源標註。
+
+## 環境需求
+
+- Python 3.11+
+- SQL Server（LocalDB 或 SQLEXPRESS 皆可）
+- [Ollama](https://ollama.com/) 本地運行，並拉取以下模型：
+  ```
+  ollama pull llama3
+  ollama pull mxbai-embed-large
+  ```
+
+## 快速開始
+
+```bash
+# 安裝依賴
+uv sync
+
+# 啟動伺服器
+uv run uvicorn main:app --reload
+```
+
+> 首次啟動前請確認 SQL Server 已建立 `local_llm_notebook` 資料庫，並建立所需資料表（`document_groups`, `documents`, `document_chunks`, `users`）。
 
 ## 專案目錄
 
-
 ```text
-├─ main.py
+├─ main.py                  # FastAPI 進入點、logging 設定
+├─ logs/                    # 自動產生的 log 檔（app.log）
+├─ chroma_db/               # ChromaDB 向量資料庫（本地持久化）
 ├─ core/
-│  ├─ database.py
-│  └─ template.py
+│  ├─ database.py           # SQL Server 連線
+│  └─ template.py           # Jinja2 模板初始化
 ├─ repositories/
 │  ├─ group_repository.py
 │  ├─ document_repository.py
-│  └─ chunk_repository.py
-├─ routers/
-│  ├─ admin.py
-│  └─ user.py
+│  ├─ chunk_repository.py   # 含相鄰 chunk 查詢與依文件 ID 查詢
+│  └─ vector_repository.py  # ChromaDB 操作
 ├─ services/
-│  ├─ file_service.py
-│  └─ rag_service.py
+│  ├─ auth_service.py
+│  ├─ file_service.py       # PDF / TXT 文字擷取
+│  ├─ document_service.py   # 文字切 chunk
+│  ├─ embedding_service.py  # Ollama embedding + 自動向量索引
+│  └─ rag_service.py        # 完整 RAG 流程（tokenize、搜尋、融合、rerank、生成）
+├─ routers/
+│  ├─ auth.py
+│  ├─ admin.py              # 上傳、群組管理、刪除
+│  └─ user.py               # 提問與 RAG 流程觸發
+├─ scripts/
+│  └─ index_chunks.py       # 手動全量重建向量索引（補救用）
 ├─ templates/
 │  ├─ admin/
 │  └─ user/
 └─ static/
    └─ style.css
 ```
-
-這種分層方式可以把資料存取、商業邏輯、頁面路由與模板顯示清楚分離，後續擴充也比較容易。
-
