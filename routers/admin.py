@@ -1,7 +1,7 @@
 import hashlib
 import logging
 
-from fastapi import APIRouter, Request, Form, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core.template import templates
@@ -96,6 +96,7 @@ def add_group(
 @router.post("/upload-document", response_class=HTMLResponse)
 async def upload_document(
     request: Request,
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     group_id: int = Form(...),
     files: list[UploadFile] = File(...)
@@ -139,7 +140,7 @@ async def upload_document(
             final_title, file.filename, content_text, group_id, file_hash
         )
         insert_document_chunks(document_id, content_text)
-        index_document_chunks(document_id)
+        background_tasks.add_task(index_document_chunks, document_id)
         success_files.append(file.filename)
         logger.info("upload success: user=%s file=%s document_id=%d group_id=%d",
                     username, file.filename, document_id, group_id)
@@ -147,7 +148,7 @@ async def upload_document(
     if success_files and failed_files:
         message = f"成功 {len(success_files)} 個，失敗 {len(failed_files)} 個"
     elif success_files:
-        message = f"成功上傳 {len(success_files)} 個檔案"
+        message = f"成功上傳 {len(success_files)} 個檔案（向量索引建立中，稍後即可搜尋）"
     else:
         message = "上傳失敗，可能有以下原因：\n" + "\n".join(failed_files)
 

@@ -14,6 +14,18 @@ def upsert_chunk_embedding(chunk_id: int, chunk_text: str, embedding: list[float
     )
 
 
+def batch_upsert_chunk_embeddings(items: list[dict]):
+    """items: list of {chunk_id, chunk_text, embedding, metadata}"""
+    if not items:
+        return
+    collection.upsert(
+        ids=[str(i["chunk_id"]) for i in items],
+        documents=[i["chunk_text"] for i in items],
+        embeddings=[i["embedding"] for i in items],
+        metadatas=[i["metadata"] for i in items],
+    )
+
+
 def delete_embeddings_by_document(document_id: int):
     collection.delete(where={"document_id": document_id})
 
