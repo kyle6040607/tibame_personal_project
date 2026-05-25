@@ -17,7 +17,7 @@ CREATE TABLE document_groups (
 CREATE TABLE users (
     id       INT IDENTITY(1,1) PRIMARY KEY,
     username NVARCHAR(100) NOT NULL UNIQUE,
-    password NVARCHAR(255) NOT NULL,          -- 建議儲存 hash，目前為明文
+    password NVARCHAR(300) NOT NULL,          -- pbkdf2:sha256:{32-char salt}:{64-char hex key} ≈ 111 chars
     role     NVARCHAR(20)  NOT NULL DEFAULT 'user'  -- 'admin' | 'user'
 );
 
