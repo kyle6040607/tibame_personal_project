@@ -69,12 +69,8 @@ async def ask_question(request: Request, question: str = Form(...)):
 
     rewritten_query = rewrite_query_with_ollama(question)
 
-    results_original = []
-    results_rewritten = []
-
-    for gid in selected_group_ids:
-        results_original.extend(search_document_chunks(question, gid))
-        results_rewritten.extend(search_document_chunks(rewritten_query, gid))
+    results_original = search_document_chunks(question, selected_group_ids)
+    results_rewritten = search_document_chunks(rewritten_query, selected_group_ids)
 
     vector_results = search_document_chunks_by_vector(question, selected_group_ids)
     vector_results_rewritten = search_document_chunks_by_vector(rewritten_query, selected_group_ids)
@@ -84,7 +80,7 @@ async def ask_question(request: Request, question: str = Form(...)):
         results_rewritten,
         vector_results,
         vector_results_rewritten,
-        limit=15
+        limit=25
     )
 
     logger.info("ask: keyword_orig=%d keyword_rewrite=%d vector=%d vector_rewrite=%d merged=%d",

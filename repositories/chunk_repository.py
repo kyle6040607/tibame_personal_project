@@ -39,7 +39,7 @@ def insert_document_chunk(document_id: int, chunk_index: int, chunk_text: str):
     conn.close()
 
 
-def search_chunk_candidates(tokens: list[str], group_id: int | None = None):
+def search_chunk_candidates(tokens: list[str], group_ids: list[int] | None = None):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -65,9 +65,14 @@ def search_chunk_candidates(tokens: list[str], group_id: int | None = None):
 
     group_sql = ""
     group_params = []
-    if group_id is not None:
-        group_sql = " AND d.group_id = ?"
-        group_params = [group_id]
+    if group_ids:
+        if len(group_ids) == 1:
+            group_sql = " AND d.group_id = ?"
+            group_params = [group_ids[0]]
+        else:
+            placeholders = ", ".join(["?" for _ in group_ids])
+            group_sql = f" AND d.group_id IN ({placeholders})"
+            group_params = list(group_ids)
 
     order_params = []
     for token in tokens:
@@ -90,7 +95,6 @@ def search_chunk_candidates(tokens: list[str], group_id: int | None = None):
         ORDER BY ({title_cases} + {filename_cases} + {text_cases}) DESC
     """
 
-    # params order must match ? appearance order: WHERE, group filter, ORDER BY
     cursor.execute(sql, params + group_params + order_params)
     rows = cursor.fetchall()
     cursor.close()

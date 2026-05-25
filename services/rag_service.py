@@ -16,6 +16,10 @@ _CJK_ASCII_BOUNDARY = re.compile(
     r'|'
     r'(?<=[一-鿿㐀-䶿])(?=[a-zA-Z0-9])'
 )
+_CJK_STOPWORDS = frozenset(
+    "的了是在有不也和都就被把但而及或以與且對為如到從由上下來去用所又還更很太已再"
+    "它他她我你您其各每些那這該此之乎者也哉矣焉"
+)
 
 
 def tokenize_query(query: str):
@@ -40,6 +44,9 @@ def tokenize_query(query: str):
                            if _CJK_CHAR.search(part[i:i+2])]
                 tokens.extend(bigrams)
 
+    # Remove single-char CJK stop words (too broad for keyword matching)
+    tokens = [t for t in tokens if not (len(t) == 1 and t in _CJK_STOPWORDS)]
+
     # Deduplicate while preserving order, cap at 16
     seen = set()
     result = []
@@ -52,12 +59,12 @@ def tokenize_query(query: str):
     return result
 
 
-def search_document_chunks(query: str, group_id: int | None = None):
+def search_document_chunks(query: str, group_ids: list[int] | None = None):
     tokens = tokenize_query(query)
     if not tokens:
         return []
 
-    rows = search_chunk_candidates(tokens, group_id)
+    rows = search_chunk_candidates(tokens, group_ids)
 
     results = []
     seen_chunk_ids = set()
@@ -103,8 +110,8 @@ def search_document_chunks(query: str, group_id: int | None = None):
     results.sort(key=lambda x: (x["score"], len(x["matched_tokens"])), reverse=True)
     nonzero = [r for r in results if r["score"] > 0]
     final = (nonzero if nonzero else results)[:50]
-    logger.info("keyword search group=%s query=%r -> %d results (%d nonzero)",
-                group_id, query, len(final), len(nonzero))
+    logger.info("keyword search groups=%s query=%r -> %d results (%d nonzero)",
+                group_ids, query, len(final), len(nonzero))
     return final
 
 
@@ -132,7 +139,8 @@ def rewrite_query_with_ollama(question: str, model_name: str = LLM_MODEL):
     try:
         response = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": model_name, "prompt": prompt, "stream": False},
+            json={"model": model_name, "prompt": prompt, "stream": False,
+                  "options": {"temperature": 0.1}},
             timeout=60
         )
         response.raise_for_status()
@@ -254,7 +262,8 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
     try:
         response = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": model_name, "prompt": prompt, "stream": False},
+            json={"model": model_name, "prompt": prompt, "stream": False,
+                  "options": {"temperature": 0.3}},
             timeout=120
         )
         response.raise_for_status()
@@ -292,7 +301,8 @@ def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name
     try:
         response = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": model_name, "prompt": prompt, "stream": False},
+            json={"model": model_name, "prompt": prompt, "stream": False,
+                  "options": {"temperature": 0.1}},
             timeout=60
         )
         response.raise_for_status()
@@ -309,10 +319,10 @@ def rerank_results_with_ollama(question: str, results: list, limit: int = 5) -> 
     if not results:
         return []
 
-    candidates = results[:3]
+    candidates = results[:5]
 
-    # Score all 3 candidates in parallel to reduce latency
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    # Score candidates in parallel to reduce latency
+    with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_item = {
             executor.submit(score_chunk_relevance_with_ollama, question, item["chunk_text"]): item
             for item in candidates
@@ -349,18 +359,21 @@ def search_document_chunks_by_vector(query: str, group_ids: list[int] | None = N
     result = query_chunk_embeddings(
         query_embedding=query_embedding,
         group_ids=group_ids,
-        n_results=25
+        n_results=50
     )
 
     ids = result.get("ids", [[]])[0]
     docs = result.get("documents", [[]])[0]
     metas = result.get("metadatas", [[]])[0]
+    distances = result.get("distances", [[]])[0]
 
     logger.info("vector search: query=%r groups=%s -> %d results", query, group_ids, len(ids))
     output = []
     seen_chunk_ids = set()
 
-    for chunk_id, chunk_text, meta in zip(ids, docs, metas):
+    for chunk_id, chunk_text, meta, dist in zip(ids, docs, metas, distances):
+        if dist > 1.5:
+            continue
         cid = int(chunk_id)
         if cid in seen_chunk_ids:
             continue
