@@ -10,12 +10,10 @@
     <h1>{{ message }}</h1>
     <p>目前登入者：{{ username }}</p>
 
-    <a href="/admin/dashboard?username={{ username }}">回 Admin 目錄</a>
+    <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
     <hr>
 
     <form action="/add-group" method="post">
-        <input type="hidden" name="username" value="{{ username }}">
-
         <label>群組名稱：</label><br>
         <input type="text" name="group_name" required>
         <br><br>
@@ -43,7 +41,6 @@
             <td>{{ group.description }}</td>
             <td>
                 <form action="/delete-group" method="post" style="margin: 0;">
-                    <input type="hidden" name="username" value="{{ username }}">
                     <input type="hidden" name="group_id" value="{{ group.id }}">
                     <button type="submit" onclick="return confirm('確定要刪除這個群組嗎？')">
                         刪除群組

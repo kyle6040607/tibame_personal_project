@@ -10,11 +10,10 @@
     <div class="page-head">
         <h1>{{ message }}</h1>
         <p>目前登入者：{{ username }}</p>
-        <a href="/">回登入頁</a>
+        <a href="/logout">登出</a>
     </div>
 
     <form action="/ask" method="post" id="askForm" onsubmit="return handleSubmit(event)">
-        <input type="hidden" name="username" value="{{ username }}">
 
         <div class="container-card ask-card">
             <h3>選擇檢索群組並提問</h3>

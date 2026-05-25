@@ -10,12 +10,10 @@
     <h1>{{ message }}</h1>
     <p>目前登入者：{{ username }}</p>
 
-    <a href="/admin/dashboard?username={{ username }}">回 Admin 目錄</a>
+    <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
     <hr>
 
     <form action="/upload-document" method="post" enctype="multipart/form-data">
-        <input type="hidden" name="username" value="{{ username }}">
-
         <label>文件標題：</label><br>
         <input type="text" name="title" id="titleInput" required>
         <br><br>
@@ -43,17 +41,13 @@
             fileInput.addEventListener("change", function () {
                 const file = this.files[0];
                 if (!file) return;
-
                 const fileName = file.name;
                 const lastDot = fileName.lastIndexOf(".");
                 const pureName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
-
                 titleInput.value = pureName;
             });
         }
     </script>
     <hr>
-
-
 </body>
 </html>

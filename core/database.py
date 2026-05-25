@@ -1,11 +1,6 @@
 import pyodbc
+from core.config import DB_CONNECTION_STRING
 
 
 def get_connection():
-    return pyodbc.connect(
-        "DRIVER={ODBC Driver 18 for SQL Server};"
-        "SERVER=localhost\\SQLEXPRESS;"
-        "DATABASE=local_llm_notebook;"
-        "Trusted_Connection=yes;"
-        "TrustServerCertificate=yes;"
-    )
+    return pyodbc.connect(DB_CONNECTION_STRING)

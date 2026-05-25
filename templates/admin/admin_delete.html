@@ -10,13 +10,11 @@
     <h1>{{ message }}</h1>
     <p>目前登入者：{{ username }}</p>
 
-    <a href="/admin/dashboard?username={{ username }}">回 Admin 目錄</a>
+    <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
     <hr>
 
     <h2>先選群組</h2>
     <form action="/admin/delete" method="get">
-        <input type="hidden" name="username" value="{{ username }}">
-
         <label>選擇群組：</label><br>
         <select name="group_id" required>
             <option value="">請選擇群組</option>
@@ -34,40 +32,39 @@
 
     <hr>
 
-<h2>文件刪除區</h2>
+    <h2>文件刪除區</h2>
 
-{% if selected_group_id %}
-    {% if documents %}
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr>
-            <th>文件標題</th>
-            <th>檔名</th>
-            <th>所屬群組</th>
-            <th>操作</th>
-        </tr>
-        {% for doc in documents %}
-        <tr>
-            <td>{{ doc.title }}</td>
-            <td>{{ doc.filename }}</td>
-            <td>{{ doc.group_name }}</td>
-            <td>
-                <form action="/delete-document" method="post" style="margin: 0;">
-                    <input type="hidden" name="username" value="{{ username }}">
-                    <input type="hidden" name="document_id" value="{{ doc.id }}">
-                    <input type="hidden" name="group_id" value="{{ selected_group_id }}">
-                    <button type="submit" onclick="return confirm('確定要刪除這份文件嗎？')">
-                        刪除
-                    </button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </table>
+    {% if selected_group_id %}
+        {% if documents %}
+        <table border="1" cellpadding="8" cellspacing="0">
+            <tr>
+                <th>文件標題</th>
+                <th>檔名</th>
+                <th>所屬群組</th>
+                <th>操作</th>
+            </tr>
+            {% for doc in documents %}
+            <tr>
+                <td>{{ doc.title }}</td>
+                <td>{{ doc.filename }}</td>
+                <td>{{ doc.group_name }}</td>
+                <td>
+                    <form action="/delete-document" method="post" style="margin: 0;">
+                        <input type="hidden" name="document_id" value="{{ doc.id }}">
+                        <input type="hidden" name="group_id" value="{{ selected_group_id }}">
+                        <button type="submit" onclick="return confirm('確定要刪除這份文件嗎？')">
+                            刪除
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p>此群組目前沒有文件。</p>
+        {% endif %}
     {% else %}
-    <p>此群組目前沒有文件。</p>
+    <p>請先選擇群組，再查看可刪除的文件。</p>
     {% endif %}
-{% else %}
-<p>請先選擇群組，再查看可刪除的文件。</p>
-{% endif %}
 </body>
 </html>

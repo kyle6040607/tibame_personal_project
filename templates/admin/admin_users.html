@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>帳號管理</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+    <p>目前登入者：{{ username }}</p>
+
+    <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
+    <hr>
+
+    <h2>建立新帳號</h2>
+
+    {% if error %}
+    <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    {% if success %}
+    <p style="color: green;">{{ success }}</p>
+    {% endif %}
+
+    <form action="/admin/create-user" method="post">
+        <label>帳號名稱：</label><br>
+        <input type="text" name="new_username" required maxlength="100">
+        <br><br>
+
+        <label>密碼：</label><br>
+        <input type="password" name="new_password" required minlength="6">
+        <br><br>
+
+        <label>角色：</label><br>
+        <select name="role" required>
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+        </select>
+        <br><br>
+
+        <button type="submit">建立帳號</button>
+    </form>
+
+    <hr>
+
+    <h2>現有帳號</h2>
+
+    {% if users %}
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr>
+            <th>ID</th>
+            <th>帳號名稱</th>
+            <th>角色</th>
+            <th>操作</th>
+        </tr>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ user.role }}</td>
+            <td>
+                <form action="/admin/delete-user" method="post" style="margin: 0;">
+                    <input type="hidden" name="user_id" value="{{ user.id }}">
+                    <button type="submit" onclick="return confirm('確定要刪除帳號「{{ user.username }}」嗎？')">
+                        刪除
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>目前沒有任何帳號。</p>
+    {% endif %}
+</body>
+</html>

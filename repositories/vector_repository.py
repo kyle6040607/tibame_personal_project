@@ -14,6 +14,10 @@ def upsert_chunk_embedding(chunk_id: int, chunk_text: str, embedding: list[float
     )
 
 
+def delete_embeddings_by_document(document_id: int):
+    collection.delete(where={"document_id": document_id})
+
+
 def query_chunk_embeddings(query_embedding: list[float], group_ids: list[int] | None = None, n_results: int = 10):
     where = None
 

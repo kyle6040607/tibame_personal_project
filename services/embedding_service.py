@@ -2,18 +2,19 @@ import logging
 import requests
 from repositories.chunk_repository import get_chunks_by_document
 from repositories.vector_repository import upsert_chunk_embedding
+from core.config import OLLAMA_URL, EMBED_MODEL
 
 logger = logging.getLogger(__name__)
 
 
-def get_embedding(text: str, model_name: str = "mxbai-embed-large") -> list[float]:
+def get_embedding(text: str, model_name: str = EMBED_MODEL) -> list[float]:
     text = (text or "").strip()
     if not text:
         return []
 
     try:
         response = requests.post(
-            "http://localhost:11434/api/embeddings",
+            f"{OLLAMA_URL}/api/embeddings",
             json={"model": model_name, "prompt": text},
             timeout=120
         )

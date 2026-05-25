@@ -3,7 +3,9 @@ import logging.handlers
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
+from core.config import SESSION_SECRET
 from routers.auth import router as auth_router
 from routers.admin import router as admin_router
 from routers.user import router as user_router
@@ -27,7 +29,7 @@ logging.basicConfig(
 )
 
 app = FastAPI()
-
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 app.include_router(auth_router)

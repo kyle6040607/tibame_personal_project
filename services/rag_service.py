@@ -1,9 +1,12 @@
 import re
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from repositories.chunk_repository import search_chunk_candidates, get_adjacent_chunks
 from repositories.vector_repository import query_chunk_embeddings
 from services.embedding_service import get_embedding
+from core.config import OLLAMA_URL, LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +16,7 @@ _CJK_ASCII_BOUNDARY = re.compile(
     r'|'
     r'(?<=[一-鿿㐀-䶿])(?=[a-zA-Z0-9])'
 )
+
 
 def tokenize_query(query: str):
     query = (query or "").strip()
@@ -104,7 +108,7 @@ def search_document_chunks(query: str, group_id: int | None = None):
     return final
 
 
-def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
+def rewrite_query_with_ollama(question: str, model_name: str = LLM_MODEL):
     prompt = f"""
 你是一個文件檢索查詢重寫器。
 請把使用者問題改寫成適合搜尋教材、講義、技術文件的小搜尋詞。
@@ -127,7 +131,7 @@ def rewrite_query_with_ollama(question: str, model_name: str = "llama3:latest"):
 
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_URL}/api/generate",
             json={"model": model_name, "prompt": prompt, "stream": False},
             timeout=60
         )
@@ -209,7 +213,7 @@ def expand_with_adjacent_chunks(results: list):
     return expanded
 
 
-def generate_answer_with_ollama(question: str, results: list, model_name: str = "llama3:latest"):
+def generate_answer_with_ollama(question: str, results: list, model_name: str = LLM_MODEL):
     if not results:
         return "根據目前提供的文件內容，無法確定答案。"
 
@@ -234,7 +238,7 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
 2. 若文件內容不足以支持答案，請回答：根據目前提供的文件內容，無法確定答案。
 3. 不可使用文件外知識補充。
 4. 如果多份文件內容有差異，請明確指出差異，不要自行統一。
-5. 一律使用繁體中文，回答自然、簡潔、清橚。
+5. 一律使用繁體中文，回答自然、簡潔、清楚。
 6. 回答完後，另起一行輸出來源，格式為：來源：文件標題（段落編號）, 文件標題（段落編號）
 
 【文件內容】
@@ -249,7 +253,7 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
     logger.info("generate_answer: question=%r, context_chunks=%d", question, len(results))
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_URL}/api/generate",
             json={"model": model_name, "prompt": prompt, "stream": False},
             timeout=120
         )
@@ -263,7 +267,7 @@ def generate_answer_with_ollama(question: str, results: list, model_name: str = 
         return f"Ollama 生成失敗：{str(e)}"
 
 
-def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name: str = "llama3:latest") -> int:
+def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name: str = LLM_MODEL) -> int:
     prompt = f"""
 你是一個文件檢索評分器。
 請判斷下面的文件片段，是否真的有助於回答使用者問題。
@@ -287,7 +291,7 @@ def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name
 
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_URL}/api/generate",
             json={"model": model_name, "prompt": prompt, "stream": False},
             timeout=60
         )
@@ -300,20 +304,25 @@ def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name
         logger.warning("score_chunk_relevance failed: %s", e)
         return 0
 
-def rerank_results_with_ollama(question: str, results: list, limit: int = 8) -> list:
+
+def rerank_results_with_ollama(question: str, results: list, limit: int = 5) -> list:
     if not results:
         return []
 
-    reranked = []
+    candidates = results[:3]
 
-    for item in results[:3]:
-        relevance_score = score_chunk_relevance_with_ollama(
-            question=question,
-            chunk_text=item["chunk_text"]
-        )
-        enriched = dict(item)
-        enriched["relevance_score"] = relevance_score
-        reranked.append(enriched)
+    # Score all 3 candidates in parallel to reduce latency
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_item = {
+            executor.submit(score_chunk_relevance_with_ollama, question, item["chunk_text"]): item
+            for item in candidates
+        }
+        reranked = []
+        for future in as_completed(future_to_item):
+            item = future_to_item[future]
+            enriched = dict(item)
+            enriched["relevance_score"] = future.result()
+            reranked.append(enriched)
 
     reranked.sort(
         key=lambda x: (
@@ -324,8 +333,8 @@ def rerank_results_with_ollama(question: str, results: list, limit: int = 8) -> 
         ),
         reverse=True,
     )
-
     return reranked[:limit]
+
 
 def search_document_chunks_by_vector(query: str, group_ids: list[int] | None = None):
     query = (query or "").strip()
