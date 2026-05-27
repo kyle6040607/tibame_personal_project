@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>對話記錄</title>
+    <link rel="icon" href="/logo/TibaMe.png" type="image/png">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="page-head">
+        <h1>{{ message }}</h1>
+        <p>目前登入者：{{ username }}</p>
+        <a href="/user/dashboard">回提問頁</a> | <a href="/logout">登出</a>
+    </div>
+
+    <hr>
+
+    {% if history %}
+    {% for entry in history %}
+    <div class="container-card" style="margin-bottom: 12px;">
+        <p style="color: gray; font-size: 0.85em;">{{ entry.created_at }}</p>
+        <p><strong>問：</strong>{{ entry.question }}</p>
+        <p><strong>答：</strong>{{ entry.answer }}{% if entry.answer | length >= 200 %}…{% endif %}</p>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p>尚無對話記錄。</p>
+    {% endif %}
+</body>
+</html>

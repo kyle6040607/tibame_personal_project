@@ -1,6 +1,18 @@
 from core.database import get_connection
 
 
+def get_user_by_id(user_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, username, role FROM users WHERE id = ?", user_id
+    )
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return user
+
+
 def get_user_by_username(username: str):
     conn = get_connection()
     cursor = conn.cursor()

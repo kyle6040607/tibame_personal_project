@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from collections import Counter
 
 from fastapi import APIRouter, BackgroundTasks, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,7 +14,12 @@ from services.file_service import extract_text_from_file
 from repositories.group_repository import get_groups, insert_group, delete_group_if_empty
 from repositories.document_repository import get_documents, insert_document, delete_document_and_chunks, document_exists_by_hash
 from repositories.vector_repository import delete_embeddings_by_document
-from repositories.user_repository import get_all_users, create_user, delete_user, username_exists
+from repositories.user_repository import get_all_users, create_user, delete_user, username_exists, get_user_by_id
+from repositories.user_group_repository import get_user_group_ids, set_user_groups, get_users_with_group_counts
+from repositories.chat_history_repository import (
+    get_all_chat_history, get_user_query_counts,
+    get_daily_query_counts, get_raw_group_ids_all
+)
 from services.auth_service import hash_password
 
 logger = logging.getLogger(__name__)
@@ -207,6 +213,7 @@ def admin_users_page(request: Request):
         context={
             "username": username,
             "users": get_all_users(),
+            "group_counts": get_users_with_group_counts(),
             "message": "帳號管理",
             "error": None,
             "success": None,
@@ -247,6 +254,7 @@ def create_user_route(
         context={
             "username": username,
             "users": get_all_users(),
+            "group_counts": get_users_with_group_counts(),
             "message": "帳號管理",
             "error": error,
             "success": success,
@@ -280,4 +288,125 @@ def delete_group(request: Request, group_id: int = Form(...)):
         request=request,
         name="admin/admin_groups.html",
         context={"message": message, "username": username, "groups": get_groups()}
+    )
+
+
+@router.get("/admin/user-groups/{user_id}", response_class=HTMLResponse)
+def admin_user_groups_page(request: Request, user_id: int):
+    username = _require_admin(request)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+
+    target_user = get_user_by_id(user_id)
+    if not target_user:
+        return RedirectResponse(url="/admin/users", status_code=303)
+
+    assigned_ids = set(get_user_group_ids(user_id))
+    all_groups = get_groups()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/admin_user_groups.html",
+        context={
+            "username": username,
+            "target_user": target_user,
+            "groups": all_groups,
+            "assigned_ids": assigned_ids,
+            "message": f"管理 {target_user.username} 的群組權限",
+        }
+    )
+
+
+@router.post("/admin/user-groups/{user_id}", response_class=HTMLResponse)
+def admin_user_groups_save(
+    request: Request,
+    user_id: int,
+    group_ids: list[int] = Form(default=[]),
+):
+    username = _require_admin(request)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+
+    target_user = get_user_by_id(user_id)
+    if not target_user:
+        return RedirectResponse(url="/admin/users", status_code=303)
+
+    set_user_groups(user_id, group_ids)
+    logger.info("admin=%s set groups=%s for user_id=%d", username, group_ids, user_id)
+
+    assigned_ids = set(group_ids)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/admin_user_groups.html",
+        context={
+            "username": username,
+            "target_user": target_user,
+            "groups": get_groups(),
+            "assigned_ids": assigned_ids,
+            "message": f"{target_user.username} 的群組權限已更新",
+            "success": True,
+        }
+    )
+
+
+@router.get("/admin/stats", response_class=HTMLResponse)
+def admin_stats_page(request: Request):
+    username = _require_admin(request)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+
+    all_groups = get_groups()
+    group_map = {g["id"]: g["name"] for g in all_groups}
+
+    raw_group_ids = get_raw_group_ids_all()
+    group_query_counter = Counter()
+    for gids_str in raw_group_ids:
+        for gid in gids_str.split(","):
+            gid = gid.strip()
+            if gid.isdigit():
+                group_query_counter[int(gid)] += 1
+
+    group_stats = [
+        {"name": group_map.get(gid, f"群組 {gid}"), "count": cnt}
+        for gid, cnt in sorted(group_query_counter.items(), key=lambda x: -x[1])
+    ]
+
+    recent_history = []
+    try:
+        rows = get_all_chat_history(limit=50)
+        recent_history = [
+            {
+                "username": r.username,
+                "question": r.question,
+                "answer": r.answer[:200],
+                "created_at": str(r.created_at)[:16],
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        logger.warning("get_all_chat_history failed: %s", e)
+
+    user_counts = []
+    try:
+        user_counts = get_user_query_counts()
+    except Exception as e:
+        logger.warning("get_user_query_counts failed: %s", e)
+
+    daily_counts = []
+    try:
+        daily_counts = get_daily_query_counts(days=7)
+    except Exception as e:
+        logger.warning("get_daily_query_counts failed: %s", e)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/admin_stats.html",
+        context={
+            "username": username,
+            "message": "使用統計",
+            "group_stats": group_stats,
+            "recent_history": recent_history,
+            "user_counts": user_counts,
+            "daily_counts": daily_counts,
+        }
     )

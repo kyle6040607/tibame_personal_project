@@ -52,6 +52,7 @@
             <th>ID</th>
             <th>帳號名稱</th>
             <th>角色</th>
+            <th>可存取群組</th>
             <th>操作</th>
         </tr>
         {% for user in users %}
@@ -60,7 +61,20 @@
             <td>{{ user.username }}</td>
             <td>{{ user.role }}</td>
             <td>
-                <form action="/admin/delete-user" method="post" style="margin: 0;">
+                {% if user.role == "admin" %}
+                    <span style="color: gray;">全部（admin）</span>
+                {% elif group_counts.get(user.id, 0) == 0 %}
+                    <span style="color: gray;">全部（未限制）</span>
+                {% else %}
+                    {{ group_counts[user.id] }} 個群組
+                {% endif %}
+            </td>
+            <td>
+                {% if user.role != "admin" %}
+                <a href="/admin/user-groups/{{ user.id }}">管理群組</a>
+                &nbsp;|&nbsp;
+                {% endif %}
+                <form action="/admin/delete-user" method="post" style="display:inline; margin: 0;">
                     <input type="hidden" name="user_id" value="{{ user.id }}">
                     <button type="submit" onclick="return confirm('確定要刪除帳號「{{ user.username }}」嗎？')">
                         刪除

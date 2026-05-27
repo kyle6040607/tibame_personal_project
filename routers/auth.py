@@ -29,6 +29,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if user:
         request.session["username"] = user.username
         request.session["role"] = user.role
+        request.session["user_id"] = user.id
         if user.role == "admin":
             return RedirectResponse(url="/admin/dashboard", status_code=303)
         return RedirectResponse(url="/user/dashboard", status_code=303)

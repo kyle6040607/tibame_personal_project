@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from core.template import templates
 from repositories.group_repository import get_groups
+from repositories.user_group_repository import get_user_group_ids
+from repositories.chat_history_repository import insert_chat_history, get_user_chat_history
 from services.rag_service import (
     search_document_chunks,
     rewrite_query_with_ollama,
@@ -22,6 +24,28 @@ router = APIRouter()
 
 def _require_login(request: Request):
     return request.session.get("username")
+
+
+def _get_permitted_groups(request: Request) -> list[dict]:
+    """
+    回傳該使用者有權限的群組清單。
+    若未設定任何權限（user_group_permissions 為空），則回傳全部群組。
+    Admin 永遠看到全部群組。
+    """
+    all_groups = get_groups()
+    role = request.session.get("role")
+    if role == "admin":
+        return all_groups
+
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return all_groups
+
+    permitted_ids = set(get_user_group_ids(user_id))
+    if not permitted_ids:
+        return all_groups
+
+    return [g for g in all_groups if g["id"] in permitted_ids]
 
 
 def build_user_context(
@@ -93,11 +117,14 @@ def user_dashboard(request: Request):
     username = _require_login(request)
     if not username:
         return RedirectResponse(url="/", status_code=303)
+
     history = list(request.session.get("chat_history", []))
+    permitted_groups = _get_permitted_groups(request)
+
     return templates.TemplateResponse(
         request=request,
         name="user/user_dashboard.html",
-        context=build_user_context(username=username, groups=get_groups(), history=history)
+        context=build_user_context(username=username, groups=permitted_groups, history=history)
     )
 
 
@@ -110,6 +137,7 @@ async def ask_question(request: Request, question: str = Form(...)):
     form = await request.form()
     selected_group_ids = [int(x) for x in form.getlist("group_ids") if str(x).strip()]
     history = list(request.session.get("chat_history", []))
+    permitted_groups = _get_permitted_groups(request)
 
     logger.info("ask: user=%s groups=%s question=%r", username, selected_group_ids, question)
 
@@ -121,6 +149,13 @@ async def ask_question(request: Request, question: str = Form(...)):
         history = history[-10:]
     request.session["chat_history"] = history
 
+    user_id = request.session.get("user_id")
+    if user_id:
+        try:
+            insert_chat_history(user_id, username, question, answer, selected_group_ids)
+        except Exception as e:
+            logger.warning("insert_chat_history failed: %s", e)
+
     logger.info("ask: final_chunks=%d answer_len=%d", len(results), len(answer))
 
     return templates.TemplateResponse(
@@ -128,7 +163,7 @@ async def ask_question(request: Request, question: str = Form(...)):
         name="user/user_dashboard.html",
         context=build_user_context(
             username=username,
-            groups=get_groups(),
+            groups=permitted_groups,
             selected_group_ids=selected_group_ids,
             question=question,
             results=results,
@@ -172,14 +207,29 @@ def ask_question_stream(
 
 
 @router.post("/save-history")
-def save_history(request: Request, question: str = Form(...), answer: str = Form(...)):
-    if not _require_login(request):
+def save_history(
+    request: Request,
+    question: str = Form(...),
+    answer: str = Form(...),
+    group_ids: list[int] = Form(default=[]),
+):
+    username = _require_login(request)
+    if not username:
         return {"ok": False}
+
     history = list(request.session.get("chat_history", []))
     history.append({"question": question, "answer": answer})
     if len(history) > 10:
         history = history[-10:]
     request.session["chat_history"] = history
+
+    user_id = request.session.get("user_id")
+    if user_id:
+        try:
+            insert_chat_history(user_id, username, question, answer, group_ids)
+        except Exception as e:
+            logger.warning("insert_chat_history failed: %s", e)
+
     return {"ok": True}
 
 
@@ -189,3 +239,32 @@ def clear_history(request: Request):
         return RedirectResponse(url="/", status_code=303)
     request.session["chat_history"] = []
     return RedirectResponse(url="/user/dashboard", status_code=303)
+
+
+@router.get("/user/history", response_class=HTMLResponse)
+def user_history(request: Request):
+    username = _require_login(request)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+
+    user_id = request.session.get("user_id")
+    db_history = []
+    if user_id:
+        try:
+            rows = get_user_chat_history(user_id, limit=50)
+            db_history = [
+                {
+                    "question": r.question,
+                    "answer": r.answer,
+                    "created_at": str(r.created_at)[:16],
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            logger.warning("get_user_chat_history failed: %s", e)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="user/user_history.html",
+        context={"username": username, "message": "我的對話記錄", "history": db_history}
+    )

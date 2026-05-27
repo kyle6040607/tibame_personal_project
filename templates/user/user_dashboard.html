@@ -11,7 +11,7 @@
     <div class="page-head">
         <h1>{{ message }}</h1>
         <p>目前登入者：{{ username }}</p>
-        <a href="/logout">登出</a>
+        <a href="/user/history">對話記錄</a> | <a href="/logout">登出</a>
     </div>
 
     <form id="askForm">
@@ -261,10 +261,11 @@
                         answerBox.textContent = fullAnswer;
                     }
                     if (data.type === "done") {
-                        /* Save to session history */
+                        /* Save to session + DB history */
                         const fd = new FormData();
                         fd.append("question", question);
                         fd.append("answer", fullAnswer);
+                        Array.from(selected.options).forEach(o => fd.append("group_ids", o.value));
                         fetch("/save-history", { method:"POST", body:fd }).catch(() => {});
                     }
                     if (data.type === "error") {

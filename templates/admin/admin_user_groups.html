@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理群組權限</title>
+    <link rel="icon" href="/logo/TibaMe.png" type="image/png">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+    <p>目前登入者：{{ username }}</p>
+
+    <a href="/admin/users">回帳號管理</a> | <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
+    <hr>
+
+    {% if success %}
+    <p style="color: green;">權限已儲存成功。</p>
+    {% endif %}
+
+    <p>
+        為使用者 <strong>{{ target_user.username }}</strong> 指定可存取的群組。<br>
+        <span style="color: gray;">若不勾選任何群組，該使用者將可存取全部群組。</span>
+    </p>
+
+    <form action="/admin/user-groups/{{ target_user.id }}" method="post">
+        {% if groups %}
+        <table border="1" cellpadding="8" cellspacing="0">
+            <tr>
+                <th>勾選</th>
+                <th>群組名稱</th>
+                <th>說明</th>
+            </tr>
+            {% for group in groups %}
+            <tr>
+                <td style="text-align:center;">
+                    <input
+                        type="checkbox"
+                        name="group_ids"
+                        value="{{ group.id }}"
+                        {% if group.id in assigned_ids %}checked{% endif %}
+                    >
+                </td>
+                <td>{{ group.name }}</td>
+                <td>{{ group.description }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p>目前沒有任何群組，請先建立群組。</p>
+        {% endif %}
+
+        <br>
+        <button type="submit">儲存權限</button>
+        <button type="button" onclick="checkAll()">全選</button>
+        <button type="button" onclick="uncheckAll()">全部取消</button>
+    </form>
+
+    <script>
+    function checkAll() {
+        document.querySelectorAll('input[name="group_ids"]').forEach(cb => cb.checked = true);
+    }
+    function uncheckAll() {
+        document.querySelectorAll('input[name="group_ids"]').forEach(cb => cb.checked = false);
+    }
+    </script>
+</body>
+</html>

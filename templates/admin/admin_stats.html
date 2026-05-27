@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>使用統計</title>
+    <link rel="icon" href="/logo/TibaMe.png" type="image/png">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>{{ message }}</h1>
+    <p>目前登入者：{{ username }}</p>
+
+    <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
+    <hr>
+
+    <h2>近 7 天每日問答量</h2>
+    {% if daily_counts %}
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr><th>日期</th><th>問答次數</th></tr>
+        {% for row in daily_counts %}
+        <tr>
+            <td>{{ row.day }}</td>
+            <td>{{ row.count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>近 7 天尚無問答記錄。</p>
+    {% endif %}
+
+    <hr>
+
+    <h2>各群組查詢次數</h2>
+    {% if group_stats %}
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr><th>群組名稱</th><th>查詢次數</th></tr>
+        {% for row in group_stats %}
+        <tr>
+            <td>{{ row.name }}</td>
+            <td>{{ row.count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>尚無群組查詢記錄。</p>
+    {% endif %}
+
+    <hr>
+
+    <h2>各使用者問答次數</h2>
+    {% if user_counts %}
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr><th>帳號</th><th>問答次數</th></tr>
+        {% for row in user_counts %}
+        <tr>
+            <td>{{ row.username }}</td>
+            <td>{{ row.count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>尚無使用者問答記錄。</p>
+    {% endif %}
+
+    <hr>
+
+    <h2>最近 50 筆問答記錄</h2>
+    {% if recent_history %}
+    <table border="1" cellpadding="8" cellspacing="0" style="width:100%; table-layout:fixed;">
+        <colgroup>
+            <col style="width:10%">
+            <col style="width:10%">
+            <col style="width:30%">
+            <col style="width:50%">
+        </colgroup>
+        <tr><th>時間</th><th>帳號</th><th>問題</th><th>回答摘要</th></tr>
+        {% for row in recent_history %}
+        <tr>
+            <td>{{ row.created_at }}</td>
+            <td>{{ row.username }}</td>
+            <td style="word-break:break-all;">{{ row.question }}</td>
+            <td style="word-break:break-all;">{{ row.answer }}{% if row.answer | length >= 200 %}…{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>尚無問答記錄。</p>
+    {% endif %}
+</body>
+</html>
