@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git rm *)",
-      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\a8810\\\\OneDrive\\\\桌面\\\\personal_project2\\\\repositories\" | ForEach-Object { $_.Name })"
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\a8810\\\\OneDrive\\\\桌面\\\\personal_project2\\\\repositories\" | ForEach-Object { $_.Name })",
+      "Bash(uv add *)"
     ]
   }
 }

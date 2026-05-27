@@ -6,86 +6,291 @@
     <title>使用統計</title>
     <link rel="icon" href="/logo/TibaMe.png" type="image/png">
     <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .stat-section { margin-bottom: 40px; }
+        .chart-controls {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .chart-controls label { font-weight: normal; }
+        .chart-controls input[type="date"] {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .chart-controls button {
+            padding: 4px 12px;
+            cursor: pointer;
+        }
+        .group-cb-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .group-cb-wrap label {
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 16px;
+            cursor: pointer;
+            user-select: none;
+            border: 1px solid #ccc;
+        }
+        .group-cb-wrap input[type="checkbox"] { margin-right: 4px; }
+        .chart-wrap { position: relative; height: 280px; }
+        .no-data { color: #999; font-style: italic; }
+    </style>
 </head>
 <body>
     <h1>{{ message }}</h1>
     <p>目前登入者：{{ username }}</p>
-
     <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
+    &nbsp;&nbsp;
+    <a href="/admin/stats/export"
+       style="padding:5px 14px; background:#217346; color:#fff; border-radius:4px; text-decoration:none; font-size:0.9em;">
+        匯出 Excel
+    </a>
     <hr>
 
-    <h2>近 7 天每日問答量</h2>
-    {% if daily_counts %}
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr><th>日期</th><th>問答次數</th></tr>
-        {% for row in daily_counts %}
-        <tr>
-            <td>{{ row.day }}</td>
-            <td>{{ row.count }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <p>近 7 天尚無問答記錄。</p>
-    {% endif %}
-
-    <hr>
-
-    <h2>各群組查詢次數</h2>
-    {% if group_stats %}
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr><th>群組名稱</th><th>查詢次數</th></tr>
-        {% for row in group_stats %}
-        <tr>
-            <td>{{ row.name }}</td>
-            <td>{{ row.count }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <p>尚無群組查詢記錄。</p>
-    {% endif %}
+    <!-- ── Section 1: Daily queries ── -->
+    <div class="stat-section">
+        <h2>每日問答量</h2>
+        <div class="chart-controls">
+            <label>開始日期 <input type="date" id="startDate" onchange="updateDailyChart()"></label>
+            <label>結束日期 <input type="date" id="endDate" onchange="updateDailyChart()"></label>
+            <button onclick="resetToLast7Days()">近 7 天</button>
+            <button onclick="resetToLast30Days()">近 30 天</button>
+        </div>
+        {% if daily_counts %}
+        <div class="chart-wrap">
+            <canvas id="dailyChart"></canvas>
+        </div>
+        {% else %}
+        <p class="no-data">尚無問答記錄。</p>
+        {% endif %}
+    </div>
 
     <hr>
 
-    <h2>各使用者問答次數</h2>
-    {% if user_counts %}
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr><th>帳號</th><th>問答次數</th></tr>
-        {% for row in user_counts %}
-        <tr>
-            <td>{{ row.username }}</td>
-            <td>{{ row.count }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <p>尚無使用者問答記錄。</p>
-    {% endif %}
+    <!-- ── Section 2: Group stats ── -->
+    <div class="stat-section">
+        <h2>各群組查詢次數</h2>
+        {% if group_stats %}
+        <div class="chart-controls">
+            <button onclick="checkAllGroups()">全選</button>
+            <button onclick="uncheckAllGroups()">全部取消</button>
+        </div>
+        <div class="group-cb-wrap" id="groupCheckboxes"></div>
+        <div class="chart-wrap">
+            <canvas id="groupChart"></canvas>
+        </div>
+        {% else %}
+        <p class="no-data">尚無群組查詢記錄。</p>
+        {% endif %}
+    </div>
 
     <hr>
 
-    <h2>最近 50 筆問答記錄</h2>
-    {% if recent_history %}
-    <table border="1" cellpadding="8" cellspacing="0" style="width:100%; table-layout:fixed;">
-        <colgroup>
-            <col style="width:10%">
-            <col style="width:10%">
-            <col style="width:30%">
-            <col style="width:50%">
-        </colgroup>
-        <tr><th>時間</th><th>帳號</th><th>問題</th><th>回答摘要</th></tr>
-        {% for row in recent_history %}
-        <tr>
-            <td>{{ row.created_at }}</td>
-            <td>{{ row.username }}</td>
-            <td style="word-break:break-all;">{{ row.question }}</td>
-            <td style="word-break:break-all;">{{ row.answer }}{% if row.answer | length >= 200 %}…{% endif %}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <p>尚無問答記錄。</p>
-    {% endif %}
+    <!-- ── Section 3: Hourly usage ── -->
+    <div class="stat-section">
+        <h2>使用時段分析</h2>
+        <p style="color:#666; font-size:0.9em;">各時段累計查詢次數（全時間）</p>
+        {% if hourly_data %}
+        <div class="chart-wrap">
+            <canvas id="hourlyChart"></canvas>
+        </div>
+        {% else %}
+        <p class="no-data">尚無時段資料。</p>
+        {% endif %}
+    </div>
+
+    <script>
+    /* ── backend data ── */
+    const allDailyData  = {{ daily_counts | tojson }};
+    const allGroupStats = {{ group_stats  | tojson }};
+    const hourlyData    = {{ hourly_data  | tojson }};
+
+    /* ── helpers ── */
+    function fmtDate(d) { return d.toISOString().slice(0, 10); }
+
+    function fillRange(data, start, end) {
+        const map = {};
+        data.forEach(d => map[d.day] = d.count);
+        const result = [];
+        const cur = new Date(start + "T00:00:00");
+        const last = new Date(end   + "T00:00:00");
+        while (cur <= last) {
+            const k = fmtDate(cur);
+            result.push({ day: k, count: map[k] || 0 });
+            cur.setDate(cur.getDate() + 1);
+        }
+        return result;
+    }
+
+    /* ── Daily chart ── */
+    let dailyChart = null;
+
+    function updateDailyChart() {
+        const start = document.getElementById("startDate").value;
+        const end   = document.getElementById("endDate").value;
+        if (!start || !end || start > end) return;
+
+        const filtered = fillRange(allDailyData, start, end);
+        const labels   = filtered.map(d => d.day);
+        const values   = filtered.map(d => d.count);
+
+        if (dailyChart) dailyChart.destroy();
+        dailyChart = new Chart(
+            document.getElementById("dailyChart").getContext("2d"),
+            {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [{
+                        label: "問答次數",
+                        data: values,
+                        backgroundColor: "rgba(54, 162, 235, 0.7)",
+                        borderColor:     "rgba(54, 162, 235, 1)",
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            }
+        );
+    }
+
+    function resetToLast7Days() {
+        const end   = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 6);
+        document.getElementById("startDate").value = fmtDate(start);
+        document.getElementById("endDate").value   = fmtDate(end);
+        updateDailyChart();
+    }
+
+    function resetToLast30Days() {
+        const end   = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 29);
+        document.getElementById("startDate").value = fmtDate(start);
+        document.getElementById("endDate").value   = fmtDate(end);
+        updateDailyChart();
+    }
+
+    /* ── Group chart ── */
+    let groupChart = null;
+
+    function renderGroupCheckboxes() {
+        const wrap = document.getElementById("groupCheckboxes");
+        if (!wrap) return;
+        wrap.innerHTML = allGroupStats.map(g =>
+            `<label>
+                <input type="checkbox" class="group-cb" value="${g.name}" checked onchange="updateGroupChart()">
+                ${g.name}
+            </label>`
+        ).join("");
+    }
+
+    function checkAllGroups() {
+        document.querySelectorAll(".group-cb").forEach(cb => cb.checked = true);
+        updateGroupChart();
+    }
+
+    function uncheckAllGroups() {
+        document.querySelectorAll(".group-cb").forEach(cb => cb.checked = false);
+        updateGroupChart();
+    }
+
+    function updateGroupChart() {
+        const selected = new Set(
+            Array.from(document.querySelectorAll(".group-cb:checked")).map(cb => cb.value)
+        );
+        const filtered = allGroupStats.filter(g => selected.has(g.name));
+        const labels   = filtered.map(g => g.name);
+        const values   = filtered.map(g => g.count);
+
+        if (groupChart) groupChart.destroy();
+        groupChart = new Chart(
+            document.getElementById("groupChart").getContext("2d"),
+            {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [{
+                        label: "查詢次數",
+                        data: values,
+                        backgroundColor: "rgba(255, 99, 132, 0.7)",
+                        borderColor:     "rgba(255, 99, 132, 1)",
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            }
+        );
+    }
+
+    /* ── Hourly chart ── */
+    function renderHourlyChart() {
+        const labels = hourlyData.map(d => `${d.hour}:00`);
+        const values = hourlyData.map(d => d.count);
+
+        new Chart(
+            document.getElementById("hourlyChart").getContext("2d"),
+            {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [{
+                        label: "查詢次數",
+                        data: values,
+                        backgroundColor: values.map(v =>
+                            v === Math.max(...values)
+                                ? "rgba(255, 159, 64, 0.9)"
+                                : "rgba(75, 192, 192, 0.7)"
+                        ),
+                        borderColor: "rgba(75, 192, 192, 1)",
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                title: items => `${items[0].label} ～ ${parseInt(items[0].label) + 1}:00`,
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            }
+        );
+    }
+
+    /* ── Init ── */
+    resetToLast7Days();
+
+    if (document.getElementById("groupCheckboxes")) {
+        renderGroupCheckboxes();
+        updateGroupChart();
+    }
+
+    if (document.getElementById("hourlyChart")) {
+        renderHourlyChart();
+    }
+    </script>
 </body>
 </html>

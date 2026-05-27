@@ -1,9 +1,12 @@
 import hashlib
 import logging
 from collections import Counter
+from io import BytesIO
+from datetime import datetime
 
+import openpyxl
 from fastapi import APIRouter, BackgroundTasks, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from core.template import templates
 from core.config import MAX_UPLOAD_MB
@@ -17,8 +20,8 @@ from repositories.vector_repository import delete_embeddings_by_document
 from repositories.user_repository import get_all_users, create_user, delete_user, username_exists, get_user_by_id
 from repositories.user_group_repository import get_user_group_ids, set_user_groups, get_users_with_group_counts
 from repositories.chat_history_repository import (
-    get_all_chat_history, get_user_query_counts,
-    get_daily_query_counts, get_raw_group_ids_all
+    get_all_daily_query_counts, get_hourly_query_counts,
+    get_raw_group_ids_all
 )
 from services.auth_service import hash_password
 
@@ -349,12 +352,7 @@ def admin_user_groups_save(
     )
 
 
-@router.get("/admin/stats", response_class=HTMLResponse)
-def admin_stats_page(request: Request):
-    username = _require_admin(request)
-    if not username:
-        return RedirectResponse(url="/", status_code=303)
-
+def _build_stats_data() -> dict:
     all_groups = get_groups()
     group_map = {g["id"]: g["name"] for g in all_groups}
 
@@ -371,42 +369,71 @@ def admin_stats_page(request: Request):
         for gid, cnt in sorted(group_query_counter.items(), key=lambda x: -x[1])
     ]
 
-    recent_history = []
-    try:
-        rows = get_all_chat_history(limit=50)
-        recent_history = [
-            {
-                "username": r.username,
-                "question": r.question,
-                "answer": r.answer[:200],
-                "created_at": str(r.created_at)[:16],
-            }
-            for r in rows
-        ]
-    except Exception as e:
-        logger.warning("get_all_chat_history failed: %s", e)
-
-    user_counts = []
-    try:
-        user_counts = get_user_query_counts()
-    except Exception as e:
-        logger.warning("get_user_query_counts failed: %s", e)
-
     daily_counts = []
     try:
-        daily_counts = get_daily_query_counts(days=7)
+        daily_counts = get_all_daily_query_counts()
     except Exception as e:
-        logger.warning("get_daily_query_counts failed: %s", e)
+        logger.warning("get_all_daily_query_counts failed: %s", e)
 
+    hourly_data = []
+    try:
+        hourly_data = get_hourly_query_counts()
+    except Exception as e:
+        logger.warning("get_hourly_query_counts failed: %s", e)
+
+    return {"group_stats": group_stats, "daily_counts": daily_counts, "hourly_data": hourly_data}
+
+
+@router.get("/admin/stats", response_class=HTMLResponse)
+def admin_stats_page(request: Request):
+    username = _require_admin(request)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+
+    data = _build_stats_data()
     return templates.TemplateResponse(
         request=request,
         name="admin/admin_stats.html",
-        context={
-            "username": username,
-            "message": "使用統計",
-            "group_stats": group_stats,
-            "recent_history": recent_history,
-            "user_counts": user_counts,
-            "daily_counts": daily_counts,
-        }
+        context={"username": username, "message": "使用統計", **data}
+    )
+
+
+@router.get("/admin/stats/export")
+def admin_stats_export(request: Request):
+    username = _require_admin(request)
+    if not username:
+        return RedirectResponse(url="/", status_code=303)
+
+    data = _build_stats_data()
+
+    wb = openpyxl.Workbook()
+
+    # Sheet 1: 每日問答量
+    ws1 = wb.active
+    ws1.title = "每日問答量"
+    ws1.append(["日期", "問答次數"])
+    for row in data["daily_counts"]:
+        ws1.append([row["day"], row["count"]])
+
+    # Sheet 2: 各群組查詢次數
+    ws2 = wb.create_sheet("各群組查詢次數")
+    ws2.append(["群組名稱", "查詢次數"])
+    for row in data["group_stats"]:
+        ws2.append([row["name"], row["count"]])
+
+    # Sheet 3: 使用時段分析
+    ws3 = wb.create_sheet("使用時段分析")
+    ws3.append(["時段", "查詢次數"])
+    for row in data["hourly_data"]:
+        ws3.append([f"{row['hour']:02d}:00", row["count"]])
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"stats_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )

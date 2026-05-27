@@ -86,6 +86,43 @@ def get_daily_query_counts(days: int = 7):
     return [{"day": str(row.day), "count": row.cnt} for row in rows]
 
 
+def get_all_daily_query_counts():
+    """Return all days that have at least one query, sorted ascending."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT CONVERT(DATE, created_at) AS day, COUNT(*) AS cnt
+        FROM chat_history
+        GROUP BY CONVERT(DATE, created_at)
+        ORDER BY day
+        """
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [{"day": str(row.day), "count": row.cnt} for row in rows]
+
+
+def get_hourly_query_counts():
+    """Return query count for each hour 0-23 (all-time)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT DATEPART(HOUR, created_at) AS hr, COUNT(*) AS cnt
+        FROM chat_history
+        GROUP BY DATEPART(HOUR, created_at)
+        ORDER BY hr
+        """
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    counts = {row.hr: row.cnt for row in rows}
+    return [{"hour": h, "count": counts.get(h, 0)} for h in range(24)]
+
+
 def get_raw_group_ids_all() -> list[str]:
     """Return all non-empty group_ids strings for aggregation in Python."""
     conn = get_connection()
