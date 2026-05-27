@@ -6,15 +6,94 @@
     <title>上傳文件</title>
     <link rel="icon" href="/logo/TibaMe.png" type="image/png">
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* ── Upload progress ── */
+        #uploadProgress {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            background: #fff;
+        }
+
+        .progress-bar-wrap {
+            background: #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 8px;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #2563eb;
+            width: 0%;
+            border-radius: 8px;
+            transition: width 0.25s ease;
+        }
+
+        #progressText {
+            font-size: 0.88em;
+            color: #475569;
+            margin: 4px 0 16px;
+        }
+
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 4px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.9em;
+        }
+
+        .file-item:last-child { border-bottom: none; }
+
+        .file-name { flex: 1; color: #334155; word-break: break-all; }
+
+        .file-status { white-space: nowrap; font-size: 0.85em; }
+        .s-wait     { color: #94a3b8; }
+        .s-working  { color: #2563eb; }
+        .s-ok       { color: #16a34a; font-weight: 600; }
+        .s-fail     { color: #dc2626; }
+
+        #resultMsg {
+            margin-top: 14px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 0.9em;
+        }
+
+        #resultMsg.ok   { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        #resultMsg.err  { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        #resultMsg.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+
+        #submitBtn {
+            padding: 10px 20px;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        #submitBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
 </head>
 <body>
     <h1>{{ message }}</h1>
     <p>目前登入者：{{ username }}</p>
-
     <a href="/admin/dashboard">回 Admin 目錄</a> | <a href="/logout">登出</a>
     <hr>
 
-    <form action="/upload-document" method="post" enctype="multipart/form-data">
+    <form id="uploadForm">
         <label>文件標題：</label><br>
         <input type="text" name="title" id="titleInput" required>
         <br><br>
@@ -31,24 +110,169 @@
         <input type="file" name="files" id="fileInput" accept=".txt,.pdf,.docx" multiple required>
         <br><br>
 
-        <button type="submit">上傳文件</button>
+        <button type="submit" id="submitBtn">上傳文件</button>
     </form>
 
-    <script>
-        const fileInput = document.getElementById("fileInput");
-        const titleInput = document.getElementById("titleInput");
+    <!-- ── Progress panel (hidden until submit) ── -->
+    <div id="uploadProgress" class="hidden">
+        <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+        <p id="progressText">準備上傳...</p>
+        <ul class="file-list" id="fileList"></ul>
+        <div id="resultMsg" class="hidden"></div>
+    </div>
 
-        if (fileInput && titleInput) {
-            fileInput.addEventListener("change", function () {
-                const file = this.files[0];
-                if (!file) return;
-                const fileName = file.name;
-                const lastDot = fileName.lastIndexOf(".");
-                const pureName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
-                titleInput.value = pureName;
-            });
-        }
-    </script>
     <hr>
+
+    <script>
+    const fileInput  = document.getElementById("fileInput");
+    const titleInput = document.getElementById("titleInput");
+    const form       = document.getElementById("uploadForm");
+    const submitBtn  = document.getElementById("submitBtn");
+    const progressPanel = document.getElementById("uploadProgress");
+    const progressFill  = document.getElementById("progressFill");
+    const progressText  = document.getElementById("progressText");
+    const fileListEl    = document.getElementById("fileList");
+    const resultMsg     = document.getElementById("resultMsg");
+
+    /* Auto-fill title from first selected file */
+    fileInput.addEventListener("change", () => {
+        const f = fileInput.files[0];
+        if (!f) return;
+        const dot = f.name.lastIndexOf(".");
+        titleInput.value = dot > 0 ? f.name.slice(0, dot) : f.name;
+    });
+
+    /* Determine emoji by extension */
+    function fileIcon(name) {
+        const ext = name.split(".").pop().toLowerCase();
+        if (ext === "pdf")  return "📕";
+        if (ext === "docx") return "📝";
+        return "📄";
+    }
+
+    /* Parse failed_files entry: "name.pdf（reason）" → {name, reason} */
+    function parseFailEntry(entry) {
+        const m = entry.match(/^(.+?)（(.+)）$/);
+        return m ? { name: m[1], reason: m[2] } : { name: entry, reason: "失敗" };
+    }
+
+    form.addEventListener("submit", (e) => {
+        e.preventDefault();
+
+        const files = Array.from(fileInput.files);
+        if (!files.length) return;
+
+        /* Build per-file rows */
+        fileListEl.innerHTML = "";
+        files.forEach(f => {
+            const li = document.createElement("li");
+            li.className = "file-item";
+            li.dataset.name = f.name;
+            li.innerHTML = `
+                <span>${fileIcon(f.name)}</span>
+                <span class="file-name">${f.name}</span>
+                <span class="file-status s-wait">等待中</span>
+            `;
+            fileListEl.appendChild(li);
+        });
+
+        progressPanel.classList.remove("hidden");
+        resultMsg.classList.add("hidden");
+        progressFill.style.width = "0%";
+        progressText.textContent = `正在上傳 ${files.length} 個檔案...`;
+        submitBtn.disabled = true;
+
+        const formData = new FormData(form);
+        const xhr = new XMLHttpRequest();
+
+        /* ── Upload progress ── */
+        xhr.upload.addEventListener("progress", (e) => {
+            if (!e.lengthComputable) return;
+            const pct = Math.round(e.loaded / e.total * 100);
+            progressFill.style.width = pct + "%";
+
+            if (pct < 100) {
+                progressText.textContent = `上傳中... ${pct}%`;
+                fileListEl.querySelectorAll(".file-status").forEach(el => {
+                    el.textContent = "上傳中...";
+                    el.className = "file-status s-working";
+                });
+            } else {
+                progressText.textContent = "伺服器處理中，請稍候...";
+                fileListEl.querySelectorAll(".file-status").forEach(el => {
+                    el.textContent = "處理中...";
+                    el.className = "file-status s-working";
+                });
+            }
+        });
+
+        /* ── Response received ── */
+        xhr.addEventListener("load", () => {
+            submitBtn.disabled = false;
+
+            let data;
+            try {
+                data = JSON.parse(xhr.responseText);
+            } catch {
+                progressText.textContent = "伺服器回應異常，請重新整理頁面確認結果。";
+                return;
+            }
+
+            const successSet = new Set(data.success_files || []);
+            const failMap    = {};
+            (data.failed_files || []).forEach(s => {
+                const { name, reason } = parseFailEntry(s);
+                failMap[name] = reason;
+            });
+
+            /* Update per-file status */
+            fileListEl.querySelectorAll(".file-item").forEach(li => {
+                const name     = li.dataset.name;
+                const statusEl = li.querySelector(".file-status");
+                if (successSet.has(name)) {
+                    statusEl.textContent = "✅ 成功";
+                    statusEl.className   = "file-status s-ok";
+                } else if (failMap[name]) {
+                    statusEl.textContent = `❌ ${failMap[name]}`;
+                    statusEl.className   = "file-status s-fail";
+                }
+            });
+
+            /* Summary bar */
+            const okCnt   = successSet.size;
+            const failCnt = Object.keys(failMap).length;
+            progressFill.style.width = "100%";
+            progressText.textContent =
+                okCnt > 0
+                    ? `完成：${okCnt} 個成功${failCnt > 0 ? `，${failCnt} 個失敗` : ""}${okCnt > 0 ? "（向量索引建立中）" : ""}`
+                    : "所有檔案均上傳失敗";
+
+            /* Result message box */
+            resultMsg.textContent = data.message;
+            resultMsg.classList.remove("hidden", "ok", "err", "warn");
+            if (okCnt > 0 && failCnt === 0) resultMsg.classList.add("ok");
+            else if (okCnt === 0)           resultMsg.classList.add("err");
+            else                            resultMsg.classList.add("warn");
+
+            /* Reset form so user can upload again */
+            form.reset();
+        });
+
+        /* ── Network error ── */
+        xhr.addEventListener("error", () => {
+            submitBtn.disabled = false;
+            progressText.textContent = "上傳失敗，請確認網路連線後重試。";
+            fileListEl.querySelectorAll(".file-status").forEach(el => {
+                el.textContent = "連線失敗";
+                el.className = "file-status s-fail";
+            });
+        });
+
+        xhr.open("POST", "/upload-document?format=json");
+        xhr.send(formData);
+    });
+    </script>
 </body>
 </html>

@@ -5,8 +5,8 @@ from io import BytesIO
 from datetime import datetime
 
 import openpyxl
-from fastapi import APIRouter, BackgroundTasks, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Request, Form, UploadFile, File, Query
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from core.template import templates
 from core.config import MAX_UPLOAD_MB
@@ -102,13 +102,14 @@ def add_group(
     )
 
 
-@router.post("/upload-document", response_class=HTMLResponse)
+@router.post("/upload-document")
 async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
     title: str = Form(...),
     group_id: int = Form(...),
-    files: list[UploadFile] = File(...)
+    files: list[UploadFile] = File(...),
+    fmt: str = Query(default="html", alias="format"),
 ):
     username = _require_admin(request)
     if not username:
@@ -160,6 +161,13 @@ async def upload_document(
         message = f"成功上傳 {len(success_files)} 個檔案（向量索引建立中，稍後即可搜尋）"
     else:
         message = "上傳失敗，可能有以下原因：\n" + "\n".join(failed_files)
+
+    if fmt == "json":
+        return JSONResponse({
+            "message": message,
+            "success_files": success_files,
+            "failed_files": failed_files,
+        })
 
     return templates.TemplateResponse(
         request=request,
