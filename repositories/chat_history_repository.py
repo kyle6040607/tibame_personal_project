@@ -1,20 +1,59 @@
 from core.database import get_connection
 
 
-def insert_chat_history(user_id: int, username: str, question: str, answer: str, group_ids: list[int]):
+def insert_chat_history(user_id: int, username: str, question: str, answer: str, group_ids: list[int]) -> int:
+    """Insert and return the new row's id."""
     group_ids_str = ",".join(str(g) for g in group_ids)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO chat_history (user_id, username, question, answer, group_ids)
+        OUTPUT INSERTED.id
         VALUES (?, ?, ?, ?, ?)
         """,
         user_id, username, question, answer, group_ids_str
     )
+    row = cursor.fetchone()
     conn.commit()
     cursor.close()
     conn.close()
+    return row[0] if row else 0
+
+
+def update_chat_feedback(chat_id: int, user_id: int, feedback: int):
+    """feedback: 1 = 讚, -1 = 踩。只允許更新自己的記錄。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE chat_history SET feedback = ? WHERE id = ? AND user_id = ?",
+        feedback, chat_id, user_id
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_feedback_summary() -> dict:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            SUM(CASE WHEN feedback =  1 THEN 1 ELSE 0 END) AS likes,
+            SUM(CASE WHEN feedback = -1 THEN 1 ELSE 0 END) AS dislikes
+        FROM chat_history
+        WHERE feedback IS NOT NULL
+        """
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    likes    = row.likes    or 0
+    dislikes = row.dislikes or 0
+    total    = likes + dislikes
+    rate     = round(likes / total * 100) if total > 0 else None
+    return {"likes": likes, "dislikes": dislikes, "total": total, "rate": rate}
 
 
 def get_user_chat_history(user_id: int, limit: int = 20):

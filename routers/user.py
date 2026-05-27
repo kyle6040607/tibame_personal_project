@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from core.template import templates
 from repositories.group_repository import get_groups
 from repositories.user_group_repository import get_user_group_ids
-from repositories.chat_history_repository import insert_chat_history, get_user_chat_history
+from repositories.chat_history_repository import insert_chat_history, get_user_chat_history, update_chat_feedback
 from services.rag_service import (
     search_document_chunks,
     rewrite_query_with_ollama,
@@ -158,6 +158,7 @@ async def ask_question(request: Request, question: str = Form(...)):
 
     logger.info("ask: final_chunks=%d answer_len=%d", len(results), len(answer))
 
+
     return templates.TemplateResponse(
         request=request,
         name="user/user_dashboard.html",
@@ -223,14 +224,15 @@ def save_history(
         history = history[-10:]
     request.session["chat_history"] = history
 
+    chat_id = 0
     user_id = request.session.get("user_id")
     if user_id:
         try:
-            insert_chat_history(user_id, username, question, answer, group_ids)
+            chat_id = insert_chat_history(user_id, username, question, answer, group_ids)
         except Exception as e:
             logger.warning("insert_chat_history failed: %s", e)
 
-    return {"ok": True}
+    return {"ok": True, "chat_id": chat_id}
 
 
 @router.post("/clear-history")
@@ -239,6 +241,28 @@ def clear_history(request: Request):
         return RedirectResponse(url="/", status_code=303)
     request.session["chat_history"] = []
     return RedirectResponse(url="/user/dashboard", status_code=303)
+
+
+@router.post("/feedback")
+def save_feedback(
+    request: Request,
+    chat_id: int = Form(...),
+    feedback: int = Form(...),
+):
+    username = _require_login(request)
+    if not username:
+        return {"ok": False, "error": "未登入"}
+    if feedback not in (1, -1):
+        return {"ok": False, "error": "無效的回饋值"}
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return {"ok": False, "error": "session 遺失"}
+    try:
+        update_chat_feedback(chat_id, user_id, feedback)
+    except Exception as e:
+        logger.warning("update_chat_feedback failed: %s", e)
+        return {"ok": False, "error": str(e)}
+    return {"ok": True}
 
 
 @router.get("/user/history", response_class=HTMLResponse)

@@ -21,7 +21,7 @@ from repositories.user_repository import get_all_users, create_user, delete_user
 from repositories.user_group_repository import get_user_group_ids, set_user_groups, get_users_with_group_counts
 from repositories.chat_history_repository import (
     get_all_daily_query_counts, get_hourly_query_counts,
-    get_raw_group_ids_all
+    get_raw_group_ids_all, get_feedback_summary
 )
 from services.auth_service import hash_password
 
@@ -381,7 +381,13 @@ def _build_stats_data() -> dict:
     except Exception as e:
         logger.warning("get_hourly_query_counts failed: %s", e)
 
-    return {"group_stats": group_stats, "daily_counts": daily_counts, "hourly_data": hourly_data}
+    feedback = {}
+    try:
+        feedback = get_feedback_summary()
+    except Exception as e:
+        logger.warning("get_feedback_summary failed: %s", e)
+
+    return {"group_stats": group_stats, "daily_counts": daily_counts, "hourly_data": hourly_data, "feedback": feedback}
 
 
 @router.get("/admin/stats", response_class=HTMLResponse)
@@ -426,6 +432,16 @@ def admin_stats_export(request: Request):
     ws3.append(["時段", "查詢次數"])
     for row in data["hourly_data"]:
         ws3.append([f"{row['hour']:02d}:00", row["count"]])
+
+    # Sheet 4: 回答品質
+    ws4 = wb.create_sheet("回答品質")
+    ws4.append(["項目", "數值"])
+    fb = data.get("feedback", {})
+    ws4.append(["讚", fb.get("likes", 0)])
+    ws4.append(["踩", fb.get("dislikes", 0)])
+    ws4.append(["已回饋總數", fb.get("total", 0)])
+    rate = fb.get("rate")
+    ws4.append(["滿意度", f"{rate}%" if rate is not None else "尚無資料"])
 
     buf = BytesIO()
     wb.save(buf)

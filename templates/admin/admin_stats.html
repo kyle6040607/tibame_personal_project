@@ -56,6 +56,27 @@
     </a>
     <hr>
 
+    <!-- ── 回答品質摘要 ── -->
+    {% if feedback and feedback.total > 0 %}
+    <div style="display:flex; gap:20px; margin-bottom:24px; flex-wrap:wrap;">
+        <div style="padding:16px 24px; border:1px solid #ccc; border-radius:8px; text-align:center; min-width:110px;">
+            <div style="font-size:2em;">👍</div>
+            <div style="font-size:1.4em; font-weight:bold;">{{ feedback.likes }}</div>
+            <div style="color:#666; font-size:0.85em;">讚</div>
+        </div>
+        <div style="padding:16px 24px; border:1px solid #ccc; border-radius:8px; text-align:center; min-width:110px;">
+            <div style="font-size:2em;">👎</div>
+            <div style="font-size:1.4em; font-weight:bold;">{{ feedback.dislikes }}</div>
+            <div style="color:#666; font-size:0.85em;">踩</div>
+        </div>
+        <div style="padding:16px 24px; border:1px solid #ccc; border-radius:8px; text-align:center; min-width:110px;">
+            <div style="font-size:2em;">📊</div>
+            <div style="font-size:1.4em; font-weight:bold;">{{ feedback.rate }}%</div>
+            <div style="color:#666; font-size:0.85em;">滿意度（共 {{ feedback.total }} 筆）</div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- ── Section 1: Daily queries ── -->
     <div class="stat-section">
         <h2>每日問答量</h2>

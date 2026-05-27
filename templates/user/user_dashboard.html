@@ -106,6 +106,13 @@
         </div>
 
         <div class="container-card answer-box" id="answerBox" style="white-space: pre-wrap;">{{ answer }}</div>
+
+        <div id="feedbackRow" class="hidden" style="margin-top:8px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:0.9em; color:#555;">這個回答有幫助嗎？</span>
+            <button id="btnLike"    onclick="sendFeedback(1)"  style="font-size:1.2em; background:none; border:1px solid #ccc; border-radius:6px; padding:2px 10px; cursor:pointer;">👍</button>
+            <button id="btnDislike" onclick="sendFeedback(-1)" style="font-size:1.2em; background:none; border:1px solid #ccc; border-radius:6px; padding:2px 10px; cursor:pointer;">👎</button>
+            <span id="feedbackDone" class="hidden" style="font-size:0.9em; color:green;"></span>
+        </div>
     </div>
 
     <h2>檢索到的相關 chunks</h2>
@@ -261,12 +268,19 @@
                         answerBox.textContent = fullAnswer;
                     }
                     if (data.type === "done") {
-                        /* Save to session + DB history */
+                        /* Save to session + DB history, then show feedback buttons */
                         const fd = new FormData();
                         fd.append("question", question);
                         fd.append("answer", fullAnswer);
                         Array.from(selected.options).forEach(o => fd.append("group_ids", o.value));
-                        fetch("/save-history", { method:"POST", body:fd }).catch(() => {});
+                        fetch("/save-history", { method:"POST", body:fd })
+                            .then(r => r.json())
+                            .then(j => {
+                                if (j.ok && j.chat_id) {
+                                    showFeedbackRow(j.chat_id);
+                                }
+                            })
+                            .catch(() => {});
                     }
                     if (data.type === "error") {
                         answerBox.textContent = "錯誤：" + data.message;
@@ -311,6 +325,41 @@
     }
 
     updateSelectedSummary();
+
+    /* ── feedback ── */
+    let _currentChatId = 0;
+
+    function showFeedbackRow(chatId) {
+        _currentChatId = chatId;
+        const row = document.getElementById("feedbackRow");
+        row.classList.remove("hidden");
+        row.style.display = "flex";
+        document.getElementById("btnLike").disabled    = false;
+        document.getElementById("btnDislike").disabled = false;
+        document.getElementById("feedbackDone").classList.add("hidden");
+        document.getElementById("btnLike").style.background    = "";
+        document.getElementById("btnDislike").style.background = "";
+    }
+
+    function sendFeedback(value) {
+        if (!_currentChatId) return;
+        const fd = new FormData();
+        fd.append("chat_id", _currentChatId);
+        fd.append("feedback", value);
+        fetch("/feedback", { method:"POST", body:fd })
+            .then(r => r.json())
+            .then(j => {
+                if (!j.ok) return;
+                document.getElementById("btnLike").disabled    = true;
+                document.getElementById("btnDislike").disabled = true;
+                document.getElementById("btnLike").style.background    = value ===  1 ? "#d4edda" : "";
+                document.getElementById("btnDislike").style.background = value === -1 ? "#f8d7da" : "";
+                const done = document.getElementById("feedbackDone");
+                done.textContent = value === 1 ? "感謝回饋！" : "已記錄，我們會繼續改善。";
+                done.classList.remove("hidden");
+            })
+            .catch(() => {});
+    }
     </script>
 </body>
 </html>
