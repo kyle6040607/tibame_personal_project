@@ -11,6 +11,12 @@ from core.config import OLLAMA_URL, LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
+# 向量距離上限（chroma collection 已改為 cosine，距離範圍 0~2，越小越相似）。
+# 這只是雜訊過濾；最終排序仍交給 RRF + rerank。可視 embedding 模型微調。
+_VECTOR_DISTANCE_MAX = 0.75
+# LLM rerank 要評分的候選數量（原本只看前 5，導致融合後第 6~N 名永遠救不回來）。
+_RERANK_POOL = 10
+
 _CJK_CHAR = re.compile(r'[一-鿿㐀-䶿]')
 _CJK_ASCII_BOUNDARY = re.compile(
     r'(?<=[a-zA-Z0-9])(?=[一-鿿㐀-䶿])'
@@ -189,22 +195,23 @@ def merge_results(*result_lists, k: int = 60, limit: int = 20):
 
 
 def expand_with_adjacent_chunks(results: list):
+    # 依「相關度順序」逐一展開每個主段，把它的前後鄰段（依閱讀順序）緊接在後。
+    # 不做全域位置排序：保留 rerank/RRF 排出的優先序，確保最相關的段落不會在
+    # 後續 build_context_text 的 [:N] 截斷中被丟掉。
     expanded = []
     seen = set()
 
     for item in results[:5]:
-        key = (item["document_id"], item["chunk_index"])
-        if key not in seen:
-            expanded.append(item)
-            seen.add(key)
-
         adjacent_rows = get_adjacent_chunks(item["document_id"], item["chunk_index"])
-        for row in adjacent_rows:
-            adj_key = (row.document_id, row.chunk_index)
-            if adj_key in seen:
-                continue
 
-            expanded.append({
+        # 把主段與鄰段彙整成 index -> dict，再依 chunk_index（閱讀順序）輸出
+        by_index = {
+            item["chunk_index"]: item
+        }
+        for row in adjacent_rows:
+            if row.chunk_index in by_index:
+                continue
+            by_index[row.chunk_index] = {
                 "chunk_id": row.id,
                 "document_id": row.document_id,
                 "chunk_index": row.chunk_index,
@@ -215,10 +222,15 @@ def expand_with_adjacent_chunks(results: list):
                 "snippet": (row.chunk_text or "")[:300],
                 "score": item.get("score", 0) - 0.2,
                 "matched_tokens": item.get("matched_tokens", []),
-            })
-            seen.add(adj_key)
+            }
 
-    expanded.sort(key=lambda x: (x["document_id"], x["chunk_index"]))
+        for idx in sorted(by_index):
+            key = (item["document_id"], idx)
+            if key in seen:
+                continue
+            seen.add(key)
+            expanded.append(by_index[idx])
+
     return expanded
 
 
@@ -367,7 +379,10 @@ def score_chunk_relevance_with_ollama(question: str, chunk_text: str, model_name
         response.raise_for_status()
         data = response.json()
         text = data.get("response", "").strip()
-        score = int(text) if text.isdigit() else 0
+        # 本地模型常回 "4分"、"分數：3"、"4." 等，不能用 isdigit() 整段判斷，
+        # 否則幾乎都解析成 0，等於 rerank 失效。改抓回覆中第一個整數。
+        m = re.search(r"\d+", text)
+        score = int(m.group()) if m else 0
         return max(0, min(score, 5))
     except Exception as e:
         logger.warning("score_chunk_relevance failed: %s", e)
@@ -378,10 +393,10 @@ def rerank_results_with_ollama(question: str, results: list, limit: int = 5) -> 
     if not results:
         return []
 
-    candidates = results[:5]
+    candidates = results[:_RERANK_POOL]
 
     # Score candidates in parallel to reduce latency
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=min(5, len(candidates))) as executor:
         future_to_item = {
             executor.submit(score_chunk_relevance_with_ollama, question, item["chunk_text"]): item
             for item in candidates
@@ -431,20 +446,21 @@ def search_document_chunks_by_vector(query: str, group_ids: list[int] | None = N
     seen_chunk_ids = set()
 
     for chunk_id, chunk_text, meta, dist in zip(ids, docs, metas, distances):
-        if dist > 1.5:
+        if dist > _VECTOR_DISTANCE_MAX:
             continue
         cid = int(chunk_id)
         if cid in seen_chunk_ids:
             continue
         seen_chunk_ids.add(cid)
 
+        meta = meta or {}
         output.append({
             "chunk_id": cid,
-            "document_id": meta["document_id"],
-            "chunk_index": meta["chunk_index"],
-            "title": meta["title"],
-            "filename": meta["filename"],
-            "group_name": meta["group_name"],
+            "document_id": meta.get("document_id"),
+            "chunk_index": meta.get("chunk_index"),
+            "title": meta.get("title", ""),
+            "filename": meta.get("filename", ""),
+            "group_name": meta.get("group_name", ""),
             "chunk_text": chunk_text,
             "snippet": chunk_text[:300],
             "score": 0,

@@ -3,59 +3,58 @@ from core.database import get_connection
 
 def get_documents(group_id=None):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    if group_id:
-        cursor.execute("""
-            SELECT d.id, d.title, d.filename, g.name AS group_name, d.content
-            FROM documents d
-            INNER JOIN document_groups g ON d.group_id = g.id
-            WHERE d.group_id = ?
-            ORDER BY d.id DESC
-        """, group_id)
-    else:
-        cursor.execute("""
-            SELECT d.id, d.title, d.filename, g.name AS group_name, d.content
-            FROM documents d
-            INNER JOIN document_groups g ON d.group_id = g.id
-            ORDER BY d.id DESC
-        """)
+        if group_id:
+            cursor.execute("""
+                SELECT d.id, d.title, d.filename, g.name AS group_name, d.content
+                FROM documents d
+                INNER JOIN document_groups g ON d.group_id = g.id
+                WHERE d.group_id = ?
+                ORDER BY d.id DESC
+            """, group_id)
+        else:
+            cursor.execute("""
+                SELECT d.id, d.title, d.filename, g.name AS group_name, d.content
+                FROM documents d
+                INNER JOIN document_groups g ON d.group_id = g.id
+                ORDER BY d.id DESC
+            """)
 
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return [
-        {
-            "id": row.id,
-            "title": row.title,
-            "filename": row.filename,
-            "group_name": row.group_name,
-            "content": row.content
-        }
-        for row in rows
-    ]
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": row.id,
+                "title": row.title,
+                "filename": row.filename,
+                "group_name": row.group_name,
+                "content": row.content
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
 
 
 def insert_document(title: str, filename: str, content_text: str, group_id: int, file_hash: str):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO documents (title, filename, content, group_id, file_hash)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (title, filename, content_text, group_id, file_hash)
+        )
 
-    cursor.execute(
-        """
-        INSERT INTO documents (title, filename, content, group_id, file_hash)
-        OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (title, filename, content_text, group_id, file_hash)
-    )
-
-    row = cursor.fetchone()
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-    return row[0]
+        row = cursor.fetchone()
+        conn.commit()
+        return row[0]
+    finally:
+        conn.close()
 
 
 def delete_document_and_chunks(document_id: int):
@@ -76,14 +75,13 @@ def delete_document_and_chunks(document_id: int):
 
 def document_exists_by_hash(file_hash: str) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT TOP 1 id FROM documents WHERE file_hash = ?",
-        (file_hash,)
-    )
-    row = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-    return row is not None
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT TOP 1 id FROM documents WHERE file_hash = ?",
+            (file_hash,)
+        )
+        row = cursor.fetchone()
+        return row is not None
+    finally:
+        conn.close()

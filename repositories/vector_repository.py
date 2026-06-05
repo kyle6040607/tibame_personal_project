@@ -2,7 +2,13 @@ import chromadb
 
 
 client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection(name="document_chunks")
+# 用 cosine 距離（語意檢索通常比預設的 L2 穩定）。
+# 注意：若 collection 已存在且是用舊的 L2 建立的，此 metadata 會被忽略，
+# 需先刪掉 ./chroma_db 或執行 scripts/reindex_vectors.py 重建。
+collection = client.get_or_create_collection(
+    name="document_chunks",
+    metadata={"hnsw:space": "cosine"},
+)
 
 
 def upsert_chunk_embedding(chunk_id: int, chunk_text: str, embedding: list[float], metadata: dict):

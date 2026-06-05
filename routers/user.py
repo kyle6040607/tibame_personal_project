@@ -1,5 +1,6 @@
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
@@ -75,10 +76,17 @@ def _do_rag(question: str, selected_group_ids: list[int]):
     """Run full RAG pipeline and return (rewritten_query, results)."""
     rewritten_query = rewrite_query_with_ollama(question)
 
-    results_original = search_document_chunks(question, selected_group_ids)
-    results_rewritten = search_document_chunks(rewritten_query, selected_group_ids)
-    vector_results = search_document_chunks_by_vector(question, selected_group_ids)
-    vector_results_rewritten = search_document_chunks_by_vector(rewritten_query, selected_group_ids)
+    # 四路檢索彼此獨立，並行執行以降低延遲（rewrite 需先完成才有改寫後的查詢）
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        f_kw_orig = ex.submit(search_document_chunks, question, selected_group_ids)
+        f_kw_rewrite = ex.submit(search_document_chunks, rewritten_query, selected_group_ids)
+        f_vec_orig = ex.submit(search_document_chunks_by_vector, question, selected_group_ids)
+        f_vec_rewrite = ex.submit(search_document_chunks_by_vector, rewritten_query, selected_group_ids)
+
+        results_original = f_kw_orig.result()
+        results_rewritten = f_kw_rewrite.result()
+        vector_results = f_vec_orig.result()
+        vector_results_rewritten = f_vec_rewrite.result()
 
     merged = merge_results(
         results_original, results_rewritten,
@@ -129,13 +137,18 @@ def user_dashboard(request: Request):
 
 
 @router.post("/ask", response_class=HTMLResponse)
-async def ask_question(request: Request, question: str = Form(...)):
+def ask_question(
+    request: Request,
+    question: str = Form(...),
+    group_ids: list[int] = Form(default=[]),
+):
+    # 同步函式：FastAPI 會在 threadpool 執行，避免內部同步的 requests/pyodbc
+    # 阻塞整個 event loop（原本 async def 會卡住其他並發請求）。
     username = _require_login(request)
     if not username:
         return RedirectResponse(url="/", status_code=303)
 
-    form = await request.form()
-    selected_group_ids = [int(x) for x in form.getlist("group_ids") if str(x).strip()]
+    selected_group_ids = group_ids
     history = list(request.session.get("chat_history", []))
     permitted_groups = _get_permitted_groups(request)
 
